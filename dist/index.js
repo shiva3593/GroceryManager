@@ -375,38 +375,15 @@ var insertInventoryItemSchema = createInsertSchema(inventoryItems, {
 
 // db/index.ts
 var connectionString = process.env.DATABASE_URL;
-var isDevelopment = process.env.NODE_ENV === "development" || !process.env.NODE_ENV;
-var db;
-var pool;
 if (!connectionString) {
-  if (isDevelopment) {
-    console.warn("Warning: DATABASE_URL environment variable is not set.");
-    console.warn("Using a local SQLite database for development.");
-    try {
-      const { default: sqlite } = await import("better-sqlite3");
-      const { drizzle: drizzleSqlite } = await import("drizzle-orm/better-sqlite3");
-      const sqliteDb = sqlite("local_dev.db");
-      db = drizzleSqlite(sqliteDb, { schema: schema_exports });
-      pool = sqliteDb;
-      console.info("Successfully initialized local SQLite database for development.");
-    } catch (err) {
-      console.error("Failed to initialize SQLite fallback:", err);
-      console.error("Please install better-sqlite3 package or set DATABASE_URL environment variable.");
-      console.error("To install SQLite support: npm install better-sqlite3");
-      throw new Error("Database connection failed. See above for details.");
-    }
-  } else {
-    throw new Error("DATABASE_URL environment variable is required");
-  }
-} else {
-  const sql2 = postgres(connectionString, {
-    max: 10,
-    idle_timeout: 20,
-    connect_timeout: 10
-  });
-  db = drizzle(sql2, { schema: schema_exports });
-  pool = sql2;
+  throw new Error("DATABASE_URL environment variable is required");
 }
+var sql = postgres(connectionString, {
+  max: 10,
+  idle_timeout: 20,
+  connect_timeout: 10
+});
+var db = drizzle(sql, { schema: schema_exports });
 
 // server/storage.ts
 import { eq, and, desc } from "drizzle-orm";
@@ -1985,10 +1962,10 @@ import { fileURLToPath } from "url";
 import { drizzle as drizzle2 } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 var DATABASE_URL = process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/grocerymanager";
-var pool2 = new Pool({
+var pool = new Pool({
   connectionString: DATABASE_URL
 });
-var db2 = drizzle2(pool2, { schema: schema_exports });
+var db2 = drizzle2(pool, { schema: schema_exports });
 
 // server/index.ts
 var __filename = fileURLToPath(import.meta.url);
@@ -2022,24 +1999,21 @@ app.use((req, res, next) => {
 });
 async function initializeDatabase() {
   try {
-    if (process.env.DATABASE_URL?.includes("postgresql://")) {
-      console.log("Using PostgreSQL database");
-      const client = await pool2.connect();
-      try {
-        const migrationFile = path3.join(__dirname, "migrations/001_initial_schema.sql");
-        const migration = fs2.readFileSync(migrationFile, "utf8");
-        await client.query(migration);
-        console.log("Database migrations completed successfully");
-      } catch (error) {
-        console.error("Error running migrations:", error);
-        throw error;
-      } finally {
-        client.release();
-      }
-    } else {
-      console.log("Warning: DATABASE_URL environment variable is not set.");
-      console.log("Using a local SQLite database for development.");
-      console.log("Successfully initialized local SQLite database for development.");
+    if (!process.env.DATABASE_URL?.includes("postgresql://")) {
+      throw new Error("DATABASE_URL must be a PostgreSQL connection string");
+    }
+    console.log("Using PostgreSQL database");
+    const client = await pool.connect();
+    try {
+      const migrationFile = path3.join(__dirname, "migrations/001_initial_schema.sql");
+      const migration = fs2.readFileSync(migrationFile, "utf8");
+      await client.query(migration);
+      console.log("Database migrations completed successfully");
+    } catch (error) {
+      console.error("Error running migrations:", error);
+      throw error;
+    } finally {
+      client.release();
     }
   } catch (error) {
     console.error("Error initializing database:", error);

@@ -48,26 +48,22 @@ app.use((req, res, next) => {
 // Initialize database
 async function initializeDatabase() {
   try {
-    // Check if we're using PostgreSQL
-    if (process.env.DATABASE_URL?.includes('postgresql://')) {
-      console.log('Using PostgreSQL database');
-      // Run SQL migrations directly
-      const client = await pool.connect();
-      try {
-        const migrationFile = path.join(__dirname, 'migrations/001_initial_schema.sql');
-        const migration = fs.readFileSync(migrationFile, 'utf8');
-        await client.query(migration);
-        console.log('Database migrations completed successfully');
-      } catch (error) {
-        console.error('Error running migrations:', error);
-        throw error;
-      } finally {
-        client.release();
-      }
-    } else {
-      console.log('Warning: DATABASE_URL environment variable is not set.');
-      console.log('Using a local SQLite database for development.');
-      console.log('Successfully initialized local SQLite database for development.');
+    if (!process.env.DATABASE_URL?.includes('postgresql://')) {
+      throw new Error("DATABASE_URL must be a PostgreSQL connection string");
+    }
+    
+    console.log('Using PostgreSQL database');
+    const client = await pool.connect();
+    try {
+      const migrationFile = path.join(__dirname, 'migrations/001_initial_schema.sql');
+      const migration = fs.readFileSync(migrationFile, 'utf8');
+      await client.query(migration);
+      console.log('Database migrations completed successfully');
+    } catch (error) {
+      console.error('Error running migrations:', error);
+      throw error;
+    } finally {
+      client.release();
     }
   } catch (error) {
     console.error('Error initializing database:', error);

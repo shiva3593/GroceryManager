@@ -50,8 +50,6 @@
     "@types/jsonwebtoken": "^9.0.9",
     "axios": "^1.9.0",
     "bcryptjs": "^3.0.2",
-    "better-sqlite3": "^11.9.1",
-    "cheerio": "^1.0.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
@@ -90,7 +88,8 @@
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
     "zod": "^3.23.8",
-    "zod-validation-error": "^3.4.0"
+    "zod-validation-error": "^3.4.0",
+    "cheerio": "^1.0.0"
   },
   "devDependencies": {
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",

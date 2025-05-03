@@ -1,56 +1,51 @@
 #!/bin/bash
 
-# Check if required software is installed
+# Check if Node.js is installed
 if ! command -v node &> /dev/null; then
-    echo "Node.js is not installed. Please install Node.js first."
+    echo "Node.js is not installed. Please install Node.js v20 or higher."
     exit 1
 fi
 
+# Check if npm is installed
 if ! command -v npm &> /dev/null; then
-    echo "npm is not installed. Please install npm first."
+    echo "npm is not installed. Please install npm."
     exit 1
 fi
 
-if ! command -v openssl &> /dev/null; then
-    echo "OpenSSL is not installed. Please install OpenSSL first."
+# Check if PostgreSQL is installed
+if ! command -v psql &> /dev/null; then
+    echo "PostgreSQL is not installed. Please install PostgreSQL 15 or higher."
     exit 1
 fi
-
-# Create necessary directories
-mkdir -p server/certs
-mkdir -p db
-
-# Generate SSL certificates
-echo "Generating SSL certificates..."
-openssl req -x509 -newkey rsa:4096 -keyout server/certs/key.pem -out server/certs/cert.pem -days 365 -nodes \
-    -subj "/CN=localhost" \
-    -addext "subjectAltName=IP:192.168.1.210,DNS:localhost"
-
-# Initialize SQLite database
-echo "Initializing database..."
-rm -f db/local_dev.db
-sqlite3 db/local_dev.db < db/migrations.sql
 
 # Install dependencies
 echo "Installing dependencies..."
+rm -rf node_modules
+rm -f package-lock.json
 npm install
 
-# Build client
-echo "Building client..."
-cd client
-npm install
+# Check if DATABASE_URL is set
+if [ -z "$DATABASE_URL" ]; then
+    echo "Warning: DATABASE_URL environment variable is not set."
+    echo "Please set DATABASE_URL in your environment or .env file."
+    echo "Example: DATABASE_URL=postgresql://username:password@localhost:5432/grocerymanager"
+    exit 1
+fi
+
+# Run database migrations
+echo "Running database migrations..."
+npm run migrate
+
+# Build the application
+echo "Building the application..."
 npm run build
-cd ..
 
-# Start server
-echo "Starting server..."
-npm run dev
-
-echo "Setup complete! You can now access the application at:"
-echo "https://192.168.1.210:5001"
+echo "Setup completed successfully!"
+echo "The server will be available at:"
+echo "  - https://localhost:5001"
+echo "  - https://192.168.1.210:5001"
 echo ""
-echo "To trust the SSL certificate in Safari:"
-echo "1. Open https://192.168.1.210:5001 in Safari"
-echo "2. Click 'Show Certificate' in the security warning"
-echo "3. Click 'Trust' and select 'Always Trust'"
-echo "4. Enter your password when prompted"
+echo "Starting development server..."
+
+# Start the development server
+npm run dev
