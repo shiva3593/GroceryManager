@@ -52,7 +52,7 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
 
   const toggleFavorite = async () => {
     try {
-      await apiRequest('PUT', `/api/recipes/${recipe.id}/favorite`, { is_favorite: !isFavorited });
+      await apiRequest('PUT', `/api/recipes/${recipe.id}/favorite`, { isFavorite: !isFavorited });
       setIsFavorited(!isFavorited);
       toast({
         title: "Success",
@@ -96,7 +96,7 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
 
   const addToShoppingList = async () => {
     try {
-      await apiRequest('POST', `/api/shopping-list/from-recipe`, { recipe_id: recipe.id });
+      await apiRequest('POST', `/api/shopping-list/from-recipe`, { recipeId: recipe.id });
       toast({
         title: "Success",
         description: "Added ingredients to shopping list",

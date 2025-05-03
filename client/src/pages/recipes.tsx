@@ -57,8 +57,8 @@ export default function Recipes() {
   });
 
   // Separate recipes into favorites and non-favorites
-  const favoriteRecipes = recipes?.filter(recipe => recipe.isFavorite) || [];
-  const regularRecipes = recipes?.filter(recipe => !recipe.isFavorite) || [];
+  const favoriteRecipes = recipes?.filter(recipe => recipe.is_favorite) || [];
+  const regularRecipes = recipes?.filter(recipe => !recipe.is_favorite) || [];
 
   const createRecipeMutation = useMutation({
     mutationFn: (newRecipe: RecipeFormValues) =>

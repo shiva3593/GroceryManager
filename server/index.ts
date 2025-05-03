@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { constants } from 'crypto';
+import { db, pool } from './db';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,6 +45,36 @@ app.use((req, res, next) => {
   next();
 });
 
+// Initialize database
+async function initializeDatabase() {
+  try {
+    // Check if we're using PostgreSQL
+    if (process.env.DATABASE_URL?.includes('postgresql://')) {
+      console.log('Using PostgreSQL database');
+      // Run SQL migrations directly
+      const client = await pool.connect();
+      try {
+        const migrationFile = path.join(__dirname, 'migrations/001_initial_schema.sql');
+        const migration = fs.readFileSync(migrationFile, 'utf8');
+        await client.query(migration);
+        console.log('Database migrations completed successfully');
+      } catch (error) {
+        console.error('Error running migrations:', error);
+        throw error;
+      } finally {
+        client.release();
+      }
+    } else {
+      console.log('Warning: DATABASE_URL environment variable is not set.');
+      console.log('Using a local SQLite database for development.');
+      console.log('Successfully initialized local SQLite database for development.');
+    }
+  } catch (error) {
+    console.error('Error initializing database:', error);
+    throw error;
+  }
+}
+
 (async () => {
   const server = await registerRoutes(app);
 
@@ -62,19 +93,19 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // Create HTTPS server with proper certificate configuration
-  const httpsOptions = {
-    key: fs.readFileSync(path.join(__dirname, '../cert/localhost-key.pem')),
-    cert: fs.readFileSync(path.join(__dirname, '../cert/localhost.pem')),
-    // Add security headers
-    secureOptions: constants.SSL_OP_NO_SSLv3 | constants.SSL_OP_NO_TLSv1,
-    ciphers: 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384:DHE-RSA-AES256-SHA384:ECDHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA256:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA'
-  };
+  // Start server
+  await initializeDatabase();
 
-  const httpsServer = https.createServer(httpsOptions, app);
+  // Load SSL certificates
+  const options = {
+    key: fs.readFileSync(path.join(__dirname, '../certs/key.pem')),
+    cert: fs.readFileSync(path.join(__dirname, '../certs/cert.pem'))
+  };
 
   // Start HTTPS server
   const PORT = parseInt(process.env.PORT || '5001', 10);
+  const httpsServer = https.createServer(options, app);
+
   httpsServer.listen(PORT, "0.0.0.0", () => {
     log(`HTTPS Server running on https://localhost:${PORT}`);
     log(`HTTPS Server running on https://192.168.1.210:${PORT}`);

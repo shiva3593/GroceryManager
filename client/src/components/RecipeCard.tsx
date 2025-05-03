@@ -9,7 +9,7 @@ interface RecipeCardProps {
 }
 
 export default function RecipeCard({ recipe, onViewRecipe }: RecipeCardProps) {
-  const [isFavorited, setIsFavorited] = useState(recipe.isFavorite);
+  const [isFavorited, setIsFavorited] = useState(recipe.is_favorite);
   const { toast } = useToast();
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -41,7 +41,11 @@ export default function RecipeCard({ recipe, onViewRecipe }: RecipeCardProps) {
   return (
     <article className="bg-white rounded-lg shadow-sm overflow-hidden border border-slate-200 hover:shadow-md transition-shadow">
       <div className="h-40 overflow-hidden relative">
-        <img src={recipe.imageUrl} alt={recipe.title} className="w-full h-full object-cover" />
+        <img 
+          src={recipe.image_url ?? 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c'} 
+          alt={recipe.title} 
+          className="w-full h-full object-cover" 
+        />
         <div className="absolute top-2 right-2 flex space-x-1">
           <button 
             onClick={toggleFavorite}
@@ -57,7 +61,7 @@ export default function RecipeCard({ recipe, onViewRecipe }: RecipeCardProps) {
         <div className="absolute bottom-0 left-0 right-0 px-3 py-1.5 bg-gradient-to-t from-black/70 to-transparent">
           <div className="flex items-center text-xs text-white">
             <span className="bg-primary/90 px-1.5 py-0.5 rounded-sm mr-2">{recipe.rating} <i className="fas fa-star text-[10px]"></i></span>
-            <span><i className="far fa-clock mr-1"></i> {recipe.prepTime} min</span>
+            <span><i className="far fa-clock mr-1"></i> {recipe.prep_time} min</span>
             <span className="ml-2"><i className="fas fa-utensils mr-1"></i> {recipe.difficulty}</span>
           </div>
         </div>

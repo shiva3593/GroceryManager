@@ -6,6 +6,8 @@ import {
   shoppingItems,
   Recipe,
   Ingredient,
+  NewIngredient,
+  NewRecipe,
   InventoryItem,
   ShoppingItem,
   ShoppingCategory
@@ -392,21 +394,28 @@ export const storage = {
   },
 
   async createRecipe(recipeData: Partial<Recipe>): Promise<Recipe> {
+    // Extract ingredients from data if they exist
+    const ingredients = (recipeData.ingredients || []) as { name: string; quantity: string; unit: string }[];
+    delete recipeData.ingredients;
+
     // First check for duplicates
     const existingRecipes = await db.query.recipes.findMany({
       where: and(
-        eq(recipes.title, String(recipeData.title)),
-        eq(recipes.url, recipeData.url)
-      )
+        eq(recipes.title, String(recipeData.title || '')),
+        eq(recipes.url, recipeData.url || '')
+      ),
+      with: {
+        ingredients: true
+      }
     });
 
     if (existingRecipes.length > 0) {
-      // If duplicate exists, update the existing recipe instead of creating a new one
+      // If duplicate exists, return the existing recipe
       return existingRecipes[0];
     }
 
     // If no duplicate exists, create new recipe
-    const [insertedRecipe] = await db.insert(recipes).values({
+    const newRecipe: NewRecipe = {
       title: String(recipeData.title || ''),
       description: String(recipeData.description || ''),
       prep_time: recipeData.prep_time || 30,
@@ -415,18 +424,34 @@ export const storage = {
       rating: recipeData.rating || 0,
       rating_count: recipeData.rating_count || 0,
       image_url: recipeData.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c',
-      url: recipeData.url || null,
-      instructions: JSON.stringify(recipeData.instructions || []),
+      url: recipeData.url || '',
+      instructions: recipeData.instructions || [],
       storage_instructions: String(recipeData.storage_instructions || ''),
-      is_favorite: recipeData.is_favorite ? 1 : 0,
-      cost_per_serving: recipeData.cost_per_serving || 0,
-      nutrition: JSON.stringify(recipeData.nutrition || { calories: 0, protein: 0, carbs: 0, fat: 0 }),
-      comments: JSON.stringify(recipeData.comments || []),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }).returning();
+      is_favorite: false,
+      cost_per_serving: recipeData.cost_per_serving?.toString() || '0',
+      nutrition: recipeData.nutrition || { calories: 0, protein: 0, carbs: 0, fat: 0 },
+      comments: recipeData.comments || []
+    };
 
-    return insertedRecipe;
+    const [insertedRecipe] = await db.insert(recipes).values(newRecipe).returning();
+
+    // Insert ingredients if they exist
+    if (ingredients.length > 0) {
+      const newIngredients: NewIngredient[] = ingredients.map(ingredient => ({
+        recipe_id: insertedRecipe.id,
+        name: String(ingredient.name || ''),
+        quantity: String(ingredient.quantity || ''),
+        unit: String(ingredient.unit || '')
+      }));
+      await db.insert(recipeIngredients).values(newIngredients);
+    }
+
+    // Return the recipe with ingredients
+    const recipe = await this.getRecipeById(insertedRecipe.id);
+    if (!recipe) {
+      throw new Error('Failed to create recipe');
+    }
+    return recipe;
   },
 
   async updateRecipe(id: number, recipeData: Partial<Recipe>): Promise<Recipe | null> {
@@ -470,7 +495,10 @@ export const storage = {
 
   async updateRecipeFavorite(id: number, isFavorite: boolean): Promise<void> {
     await db.update(recipes)
-      .set({ is_favorite: isFavorite ? 1 : 0, updated_at: new Date().toISOString() })
+      .set({ 
+        is_favorite: isFavorite,
+        updated_at: new Date()
+      })
       .where(eq(recipes.id, id));
   },
 
@@ -495,7 +523,7 @@ export const storage = {
 
       let extractedRecipe: Partial<Recipe> = {
         url: url,
-        is_favorite: 0,
+        is_favorite: false,
         rating: 0,
         rating_count: 0,
         nutrition: JSON.stringify({ calories: 0, protein: 0, carbs: 0, fat: 0 }),
@@ -522,9 +550,9 @@ export const storage = {
           name: String(ing?.name || ''),
           quantity: String(ing?.quantity || '1'),
           unit: String(ing?.unit || 'unit'),
-          recipe_id: 0,
+          recipe_id: null,
           id: 0,
-          created_at: new Date().toISOString()
+          created_at: new Date()
         }));
       };
 
@@ -693,7 +721,12 @@ export const storage = {
         }
         
         // Assign the final ingredients to the extracted recipe
-        extractedRecipe.ingredients = finalIngredients;
+        extractedRecipe.ingredients = finalIngredients.map(ing => ({
+          ...ing,
+          id: 0,
+          created_at: new Date(),
+          recipe_id: null
+        }));
         
         // Try to extract prep time
         const prepTimeText = $('.prep-time, .cook-time, .total-time').text();
@@ -711,7 +744,7 @@ export const storage = {
         
         extractedRecipe.difficulty = "Medium";
         extractedRecipe.storage_instructions = "Store in refrigerator in an airtight container.";
-        extractedRecipe.cost_per_serving = 5.00;
+        extractedRecipe.cost_per_serving = "5.00";
         
         processRecipeData(
           Array.isArray(extractedRecipe.instructions) ? extractedRecipe.instructions : [],
@@ -756,7 +789,12 @@ export const storage = {
           }
         });
         
-        extractedRecipe.ingredients = ingredients;
+        extractedRecipe.ingredients = ingredients.map(ing => ({
+          ...ing,
+          id: 0,
+          created_at: new Date(),
+          recipe_id: null
+        }));
         
         // Try to extract prep time
         const prepTimeText = $('.recipe-meta-item, .recipe-details').text();
@@ -774,7 +812,7 @@ export const storage = {
         
         extractedRecipe.difficulty = "Medium";
         extractedRecipe.storage_instructions = "Store in refrigerator in an airtight container.";
-        extractedRecipe.cost_per_serving = 5.00;
+        extractedRecipe.cost_per_serving = "5.00";
         
         processRecipeData(
           Array.isArray(extractedRecipe.instructions) ? extractedRecipe.instructions : [],
@@ -849,8 +887,13 @@ export const storage = {
           }
         }
         
-        extractedRecipe.ingredients = ingredients.length > 0 ? ingredients : [
-          { name: "Ingredients could not be extracted", quantity: "", unit: "" }
+        extractedRecipe.ingredients = ingredients.length > 0 ? ingredients.map(ing => ({
+          ...ing,
+          id: 0,
+          created_at: new Date(),
+          recipe_id: null
+        })) : [
+          { name: "Ingredients could not be extracted", quantity: "", unit: "", id: 0, created_at: new Date(), recipe_id: null }
         ];
         
         // Set default values
@@ -858,7 +901,7 @@ export const storage = {
         extractedRecipe.servings = 4;
         extractedRecipe.difficulty = "Medium";
         extractedRecipe.storage_instructions = "Store in refrigerator in an airtight container.";
-        extractedRecipe.cost_per_serving = 5.00;
+        extractedRecipe.cost_per_serving = "5.00";
         
         processRecipeData(
           Array.isArray(extractedRecipe.instructions) ? extractedRecipe.instructions : [],
@@ -925,7 +968,7 @@ export const storage = {
         category: true
       }
     });
-    const categories = [...new Set(items.map(item => item.category))];
+    const categories = Array.from(new Set(items.map((item: { category: string }) => item.category))) as string[];
     return categories;
   },
 
@@ -949,18 +992,18 @@ export const storage = {
       if (productInfo) {
         // Create an InventoryItem object
         return {
-          id: 0, // This will be assigned by the database when inserted
+          id: 0,
           name: productInfo.name || '',
-          image_url: productInfo.imageUrl || null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          image_url: productInfo.image_url || null,
+          created_at: new Date(),
+          updated_at: new Date(),
           quantity: productInfo.quantity || '1',
           unit: productInfo.unit || 'unit',
           count: productInfo.count || 1,
           barcode: barcode,
           location: productInfo.location || 'Pantry',
           category: productInfo.category || 'Other',
-          expiryDate: null
+          expiry_date: null
         };
       }
       
@@ -976,11 +1019,11 @@ export const storage = {
     // First check for duplicates
     const existingItems = await db.query.inventoryItems.findMany({
       where: and(
-        eq(inventoryItems.name, String(itemData.name)),
-        eq(inventoryItems.quantity, String(itemData.quantity)),
-        eq(inventoryItems.unit, String(itemData.unit)),
-        eq(inventoryItems.category, String(itemData.category)),
-        eq(inventoryItems.barcode, itemData.barcode)
+        eq(inventoryItems.name, String(itemData.name || '')),
+        eq(inventoryItems.quantity, String(itemData.quantity || '')),
+        eq(inventoryItems.unit, String(itemData.unit || '')),
+        eq(inventoryItems.category, String(itemData.category || '')),
+        eq(inventoryItems.barcode, itemData.barcode || '')
       )
     });
 
@@ -995,13 +1038,13 @@ export const storage = {
       quantity: String(itemData.quantity || ''),
       unit: String(itemData.unit || ''),
       count: itemData.count || 1,
-      barcode: itemData.barcode,
+      barcode: itemData.barcode || '',
       location: itemData.location || '',
       category: itemData.category || '',
-      expiry_date: itemData.expiry_date ? new Date(itemData.expiry_date).toISOString() : null,
-      image_url: itemData.image_url,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      expiry_date: itemData.expiry_date ? new Date(itemData.expiry_date) : null,
+      image_url: itemData.image_url || null,
+      created_at: new Date(),
+      updated_at: new Date()
     }).returning();
 
     return insertedItem;
@@ -1023,7 +1066,7 @@ export const storage = {
   // Shopping list operations
   async getAllShoppingItems(): Promise<ShoppingItem[]> {
     return db.query.shoppingItems.findMany({
-      orderBy: desc(shoppingItems.createdAt)
+      orderBy: desc(shoppingItems.created_at)
     });
   },
 
@@ -1035,23 +1078,25 @@ export const storage = {
 
   async getShoppingItemsByCategory(): Promise<ShoppingCategory[]> {
     const items = await db.query.shoppingItems.findMany({
-      orderBy: (shoppingItems, { asc }) => [asc(shoppingItems.category)]
+      orderBy: (items: typeof shoppingItems, { asc }: { asc: (column: any) => any }) => [asc(items.category)]
     });
     
     // Group items by category
     const categorizedItems: { [key: string]: ShoppingItem[] } = {};
     
-    items.forEach(item => {
-      if (!categorizedItems[item.category]) {
-        categorizedItems[item.category] = [];
+    items.forEach((item: ShoppingItem) => {
+      const category = item.category || 'Other';
+      if (!categorizedItems[category]) {
+        categorizedItems[category] = [];
       }
-      categorizedItems[item.category].push(item);
+      categorizedItems[category].push(item);
     });
-    
-    // Convert to array of category objects
-    return Object.keys(categorizedItems).map(categoryName => ({
-      name: categoryName,
-      items: categorizedItems[categoryName]
+
+    // Convert to array format
+    return Object.entries(categorizedItems).map(([category, items]) => ({
+      name: category,
+      category,
+      items
     }));
   },
 
@@ -1059,15 +1104,15 @@ export const storage = {
     // First check for duplicates
     const existingItems = await db.query.shoppingItems.findMany({
       where: and(
-        eq(shoppingItems.name, String(itemData.name)),
-        eq(shoppingItems.quantity, String(itemData.quantity)),
-        eq(shoppingItems.unit, String(itemData.unit)),
-        eq(shoppingItems.category, String(itemData.category))
+        eq(shoppingItems.name, String(itemData.name || '')),
+        eq(shoppingItems.quantity, String(itemData.quantity || '')),
+        eq(shoppingItems.unit, String(itemData.unit || '')),
+        eq(shoppingItems.category, String(itemData.category || 'Other'))
       )
     });
 
     if (existingItems.length > 0) {
-      // If duplicate exists, update the existing item instead of creating a new one
+      // If duplicate exists, return the existing item
       return existingItems[0];
     }
 
@@ -1075,11 +1120,11 @@ export const storage = {
     const [insertedItem] = await db.insert(shoppingItems).values({
       name: String(itemData.name || ''),
       quantity: String(itemData.quantity || ''),
-      unit: String(itemData.unit || ''),
-      category: String(itemData.category || ''),
-      checked: itemData.checked ? 1 : 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      unit: String(itemData.unit || 'unit'),
+      category: String(itemData.category || 'Other'),
+      checked: false,
+      created_at: new Date(),
+      updated_at: new Date()
     }).returning();
 
     return insertedItem;
@@ -1121,17 +1166,22 @@ export const storage = {
     
     // Add each ingredient to the shopping list
     for (const ingredient of recipe.ingredients) {
-      if (!ingredient.name || !ingredient.quantity) {
+      if (!ingredient.name) {
         console.warn(`Skipping invalid ingredient in recipe ${recipeId}:`, ingredient);
         continue;
       }
       
-      await this.createShoppingItem({
-        name: ingredient.name,
-        quantity: ingredient.quantity,
-        unit: ingredient.unit || "unit",
-        category: this.categorizeIngredient(ingredient.name)
-      });
+      try {
+        await this.createShoppingItem({
+          name: ingredient.name,
+          quantity: ingredient.quantity || '1',
+          unit: ingredient.unit || 'unit',
+          category: this.categorizeIngredient(ingredient.name)
+        });
+      } catch (error) {
+        console.error(`Error adding ingredient ${ingredient.name} to shopping list:`, error);
+        // Continue with other ingredients even if one fails
+      }
     }
   },
 
@@ -1179,8 +1229,8 @@ export const storage = {
         location: 'Pantry',
         category: 'Other',
         image_url: productInfo.image_url || null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        created_at: new Date(),
+        updated_at: new Date()
       };
 
       // Check if item with barcode already exists
@@ -1201,8 +1251,8 @@ export const storage = {
     try {
       // Remove duplicate shopping items
       const shoppingItems = await db.query.shoppingItems.findMany();
-      const uniqueShoppingItems = new Map();
-      shoppingItems.forEach(item => {
+      const uniqueShoppingItems = new Map<string, ShoppingItem>();
+      shoppingItems.forEach((item: ShoppingItem) => {
         const key = `${item.name}-${item.quantity}-${item.unit}-${item.category}`;
         if (!uniqueShoppingItems.has(key)) {
           uniqueShoppingItems.set(key, item);
@@ -1211,14 +1261,15 @@ export const storage = {
       
       // Clear and reinsert unique items
       await db.delete(shoppingItems);
-      for (const item of uniqueShoppingItems.values()) {
+      const uniqueShoppingArray = Array.from(uniqueShoppingItems.values());
+      for (const item of uniqueShoppingArray) {
         await db.insert(shoppingItems).values(item);
       }
 
       // Remove duplicate inventory items
       const inventoryItems = await db.query.inventoryItems.findMany();
-      const uniqueInventoryItems = new Map();
-      inventoryItems.forEach(item => {
+      const uniqueInventoryItems = new Map<string, InventoryItem>();
+      inventoryItems.forEach((item: InventoryItem) => {
         const key = `${item.name}-${item.quantity}-${item.unit}-${item.category}-${item.barcode}`;
         if (!uniqueInventoryItems.has(key)) {
           uniqueInventoryItems.set(key, item);
@@ -1227,14 +1278,15 @@ export const storage = {
       
       // Clear and reinsert unique items
       await db.delete(inventoryItems);
-      for (const item of uniqueInventoryItems.values()) {
+      const uniqueInventoryArray = Array.from(uniqueInventoryItems.values());
+      for (const item of uniqueInventoryArray) {
         await db.insert(inventoryItems).values(item);
       }
 
       // Remove duplicate recipes
       const recipes = await db.query.recipes.findMany();
-      const uniqueRecipes = new Map();
-      recipes.forEach(recipe => {
+      const uniqueRecipes = new Map<string, Recipe>();
+      recipes.forEach((recipe: Recipe) => {
         const key = `${recipe.title}-${recipe.url}`;
         if (!uniqueRecipes.has(key)) {
           uniqueRecipes.set(key, recipe);
@@ -1243,7 +1295,8 @@ export const storage = {
       
       // Clear and reinsert unique recipes
       await db.delete(recipes);
-      for (const recipe of uniqueRecipes.values()) {
+      const uniqueRecipesArray = Array.from(uniqueRecipes.values());
+      for (const recipe of uniqueRecipesArray) {
         await db.insert(recipes).values(recipe);
       }
 
@@ -1252,5 +1305,10 @@ export const storage = {
       console.error("Error removing duplicates:", error);
       throw error;
     }
+  },
+
+  // Helper function to convert array to Set
+  arrayToSet<T>(arr: T[]): Set<T> {
+    return new Set(arr);
   }
 };

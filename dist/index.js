@@ -281,72 +281,72 @@ __export(schema_exports, {
   shoppingItems: () => shoppingItems,
   users: () => users
 });
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { pgTable, serial, text, integer, boolean, timestamp, decimal, jsonb } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { relations } from "drizzle-orm";
-var users = sqliteTable("users", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+var users = pgTable("users", {
+  id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
-  created_at: text("created_at").notNull().default("datetime('now')")
+  created_at: timestamp("created_at").defaultNow()
 });
 var loginSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
   password: z.string().min(6, "Password must be at least 6 characters")
 });
 var registerSchema = loginSchema;
-var recipes = sqliteTable("recipes", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  title: text("title").notNull().unique(),
-  description: text("description").notNull(),
-  prep_time: integer("prep_time").notNull(),
-  servings: integer("servings").notNull(),
-  difficulty: text("difficulty").notNull(),
-  rating: real("rating").notNull(),
-  rating_count: integer("rating_count").notNull(),
-  image_url: text("image_url").notNull(),
-  url: text("url"),
-  instructions: text("instructions").notNull(),
-  storage_instructions: text("storage_instructions"),
-  is_favorite: integer("is_favorite").notNull().default(0),
-  cost_per_serving: real("cost_per_serving").notNull(),
-  nutrition: text("nutrition").notNull(),
-  comments: text("comments"),
-  created_at: text("created_at").notNull().default("datetime('now')"),
-  updated_at: text("updated_at").notNull().default("datetime('now')")
-});
-var recipeIngredients = sqliteTable("recipe_ingredients", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  recipe_id: integer("recipe_id").notNull().references(() => recipes.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  quantity: text("quantity").notNull(),
-  unit: text("unit").notNull(),
-  created_at: text("created_at").notNull().default("datetime('now')")
-});
-var inventoryItems = sqliteTable("inventory_items", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  name: text("name").notNull(),
-  quantity: text("quantity").notNull(),
-  unit: text("unit").notNull(),
-  count: integer("count").notNull(),
-  barcode: text("barcode"),
-  location: text("location").notNull(),
-  category: text("category").notNull(),
-  expiry_date: text("expiry_date"),
+var recipes = pgTable("recipes", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description"),
+  prep_time: integer("prep_time").default(30),
+  servings: integer("servings").default(2),
+  difficulty: text("difficulty").default("Easy"),
+  rating: integer("rating").default(0),
+  rating_count: integer("rating_count").default(0),
   image_url: text("image_url"),
-  created_at: text("created_at").notNull().default("datetime('now')"),
-  updated_at: text("updated_at").notNull().default("datetime('now')")
+  url: text("url"),
+  instructions: jsonb("instructions").default("[]"),
+  storage_instructions: text("storage_instructions"),
+  is_favorite: boolean("is_favorite").default(false),
+  cost_per_serving: decimal("cost_per_serving", { precision: 10, scale: 2 }).default("0"),
+  nutrition: jsonb("nutrition").default('{"calories":0,"protein":0,"carbs":0,"fat":0}'),
+  comments: jsonb("comments").default("[]"),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow()
 });
-var shoppingItems = sqliteTable("shopping_items", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+var recipeIngredients = pgTable("recipe_ingredients", {
+  id: serial("id").primaryKey(),
+  recipe_id: integer("recipe_id").references(() => recipes.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   quantity: text("quantity").notNull(),
   unit: text("unit").notNull(),
-  category: text("category").notNull(),
-  checked: integer("checked").notNull().default(0),
-  created_at: text("created_at").notNull().default("datetime('now')"),
-  updated_at: text("updated_at").notNull().default("datetime('now')")
+  created_at: timestamp("created_at").defaultNow()
+});
+var inventoryItems = pgTable("inventory_items", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  quantity: text("quantity").notNull(),
+  unit: text("unit").notNull(),
+  count: integer("count").default(1),
+  barcode: text("barcode"),
+  location: text("location"),
+  category: text("category"),
+  expiry_date: timestamp("expiry_date"),
+  image_url: text("image_url"),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow()
+});
+var shoppingItems = pgTable("shopping_items", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  quantity: text("quantity").notNull(),
+  unit: text("unit").notNull(),
+  category: text("category"),
+  checked: boolean("checked").default(false),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow()
 });
 var recipesRelations = relations(recipes, ({ many }) => ({
   ingredients: many(recipeIngredients)
@@ -582,9 +582,9 @@ function parseIngredientText(text2) {
       "\u215D": "0.625",
       "\u215E": "0.875"
     };
-    for (const [fraction, decimal] of Object.entries(fractionMap)) {
+    for (const [fraction, decimal2] of Object.entries(fractionMap)) {
       if (text2.startsWith(fraction)) {
-        text2 = text2.replace(fraction, decimal + " ");
+        text2 = text2.replace(fraction, decimal2 + " ");
         break;
       }
     }
@@ -805,16 +805,21 @@ var storage = {
     return recipe;
   },
   async createRecipe(recipeData) {
+    const ingredients = recipeData.ingredients || [];
+    delete recipeData.ingredients;
     const existingRecipes = await db.query.recipes.findMany({
       where: and(
-        eq(recipes.title, String(recipeData.title)),
-        eq(recipes.url, recipeData.url)
-      )
+        eq(recipes.title, String(recipeData.title || "")),
+        eq(recipes.url, recipeData.url || "")
+      ),
+      with: {
+        ingredients: true
+      }
     });
     if (existingRecipes.length > 0) {
       return existingRecipes[0];
     }
-    const [insertedRecipe] = await db.insert(recipes).values({
+    const newRecipe = {
       title: String(recipeData.title || ""),
       description: String(recipeData.description || ""),
       prep_time: recipeData.prep_time || 30,
@@ -823,17 +828,29 @@ var storage = {
       rating: recipeData.rating || 0,
       rating_count: recipeData.rating_count || 0,
       image_url: recipeData.image_url || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c",
-      url: recipeData.url || null,
-      instructions: JSON.stringify(recipeData.instructions || []),
+      url: recipeData.url || "",
+      instructions: recipeData.instructions || [],
       storage_instructions: String(recipeData.storage_instructions || ""),
-      is_favorite: recipeData.is_favorite ? 1 : 0,
-      cost_per_serving: recipeData.cost_per_serving || 0,
-      nutrition: JSON.stringify(recipeData.nutrition || { calories: 0, protein: 0, carbs: 0, fat: 0 }),
-      comments: JSON.stringify(recipeData.comments || []),
-      created_at: (/* @__PURE__ */ new Date()).toISOString(),
-      updated_at: (/* @__PURE__ */ new Date()).toISOString()
-    }).returning();
-    return insertedRecipe;
+      is_favorite: false,
+      cost_per_serving: recipeData.cost_per_serving?.toString() || "0",
+      nutrition: recipeData.nutrition || { calories: 0, protein: 0, carbs: 0, fat: 0 },
+      comments: recipeData.comments || []
+    };
+    const [insertedRecipe] = await db.insert(recipes).values(newRecipe).returning();
+    if (ingredients.length > 0) {
+      const newIngredients = ingredients.map((ingredient) => ({
+        recipe_id: insertedRecipe.id,
+        name: String(ingredient.name || ""),
+        quantity: String(ingredient.quantity || ""),
+        unit: String(ingredient.unit || "")
+      }));
+      await db.insert(recipeIngredients).values(newIngredients);
+    }
+    const recipe = await this.getRecipeById(insertedRecipe.id);
+    if (!recipe) {
+      throw new Error("Failed to create recipe");
+    }
+    return recipe;
   },
   async updateRecipe(id, recipeData) {
     const ingredients = recipeData.ingredients || [];
@@ -861,7 +878,10 @@ var storage = {
     return this.getRecipeById(id);
   },
   async updateRecipeFavorite(id, isFavorite) {
-    await db.update(recipes).set({ is_favorite: isFavorite ? 1 : 0, updated_at: (/* @__PURE__ */ new Date()).toISOString() }).where(eq(recipes.id, id));
+    await db.update(recipes).set({
+      is_favorite: isFavorite,
+      updated_at: /* @__PURE__ */ new Date()
+    }).where(eq(recipes.id, id));
   },
   async deleteRecipe(id) {
     await db.delete(recipes).where(eq(recipes.id, id));
@@ -879,7 +899,7 @@ var storage = {
       console.log(`Successfully loaded HTML from ${url}`);
       let extractedRecipe = {
         url,
-        is_favorite: 0,
+        is_favorite: false,
         rating: 0,
         rating_count: 0,
         nutrition: JSON.stringify({ calories: 0, protein: 0, carbs: 0, fat: 0 }),
@@ -900,9 +920,9 @@ var storage = {
           name: String(ing?.name || ""),
           quantity: String(ing?.quantity || "1"),
           unit: String(ing?.unit || "unit"),
-          recipe_id: 0,
+          recipe_id: null,
           id: 0,
-          created_at: (/* @__PURE__ */ new Date()).toISOString()
+          created_at: /* @__PURE__ */ new Date()
         }));
       };
       const processRecipeData = (rawInstructions, rawIngredients) => {
@@ -1003,7 +1023,12 @@ var storage = {
             finalIngredients = Array.from(uniqueIngredients.values());
           }
         }
-        extractedRecipe.ingredients = finalIngredients;
+        extractedRecipe.ingredients = finalIngredients.map((ing) => ({
+          ...ing,
+          id: 0,
+          created_at: /* @__PURE__ */ new Date(),
+          recipe_id: null
+        }));
         const prepTimeText = $(".prep-time, .cook-time, .total-time").text();
         const prepTimeMatch = prepTimeText.match(/(\d+)/);
         if (prepTimeMatch) {
@@ -1016,7 +1041,7 @@ var storage = {
         }
         extractedRecipe.difficulty = "Medium";
         extractedRecipe.storage_instructions = "Store in refrigerator in an airtight container.";
-        extractedRecipe.cost_per_serving = 5;
+        extractedRecipe.cost_per_serving = "5.00";
         processRecipeData(
           Array.isArray(extractedRecipe.instructions) ? extractedRecipe.instructions : [],
           extractedRecipe.ingredients || []
@@ -1040,7 +1065,12 @@ var storage = {
             ingredients.push(parsedIngredient);
           }
         });
-        extractedRecipe.ingredients = ingredients;
+        extractedRecipe.ingredients = ingredients.map((ing) => ({
+          ...ing,
+          id: 0,
+          created_at: /* @__PURE__ */ new Date(),
+          recipe_id: null
+        }));
         const prepTimeText = $(".recipe-meta-item, .recipe-details").text();
         const prepTimeMatch = prepTimeText.match(/(\d+)\s*min/i);
         if (prepTimeMatch) {
@@ -1053,7 +1083,7 @@ var storage = {
         }
         extractedRecipe.difficulty = "Medium";
         extractedRecipe.storage_instructions = "Store in refrigerator in an airtight container.";
-        extractedRecipe.cost_per_serving = 5;
+        extractedRecipe.cost_per_serving = "5.00";
         processRecipeData(
           Array.isArray(extractedRecipe.instructions) ? extractedRecipe.instructions : [],
           extractedRecipe.ingredients || []
@@ -1095,14 +1125,19 @@ var storage = {
             }
           }
         }
-        extractedRecipe.ingredients = ingredients.length > 0 ? ingredients : [
-          { name: "Ingredients could not be extracted", quantity: "", unit: "" }
+        extractedRecipe.ingredients = ingredients.length > 0 ? ingredients.map((ing) => ({
+          ...ing,
+          id: 0,
+          created_at: /* @__PURE__ */ new Date(),
+          recipe_id: null
+        })) : [
+          { name: "Ingredients could not be extracted", quantity: "", unit: "", id: 0, created_at: /* @__PURE__ */ new Date(), recipe_id: null }
         ];
         extractedRecipe.prep_time = 30;
         extractedRecipe.servings = 4;
         extractedRecipe.difficulty = "Medium";
         extractedRecipe.storage_instructions = "Store in refrigerator in an airtight container.";
-        extractedRecipe.cost_per_serving = 5;
+        extractedRecipe.cost_per_serving = "5.00";
         processRecipeData(
           Array.isArray(extractedRecipe.instructions) ? extractedRecipe.instructions : [],
           extractedRecipe.ingredients || []
@@ -1156,7 +1191,7 @@ var storage = {
         category: true
       }
     });
-    const categories = [...new Set(items.map((item) => item.category))];
+    const categories = Array.from(new Set(items.map((item) => item.category)));
     return categories;
   },
   async getItemByBarcode(barcode) {
@@ -1172,18 +1207,17 @@ var storage = {
       if (productInfo) {
         return {
           id: 0,
-          // This will be assigned by the database when inserted
           name: productInfo.name || "",
-          image_url: productInfo.imageUrl || null,
-          createdAt: /* @__PURE__ */ new Date(),
-          updatedAt: /* @__PURE__ */ new Date(),
+          image_url: productInfo.image_url || null,
+          created_at: /* @__PURE__ */ new Date(),
+          updated_at: /* @__PURE__ */ new Date(),
           quantity: productInfo.quantity || "1",
           unit: productInfo.unit || "unit",
           count: productInfo.count || 1,
           barcode,
           location: productInfo.location || "Pantry",
           category: productInfo.category || "Other",
-          expiryDate: null
+          expiry_date: null
         };
       }
       console.log(`No product information found for barcode ${barcode}`);
@@ -1196,11 +1230,11 @@ var storage = {
   async createInventoryItem(itemData) {
     const existingItems = await db.query.inventoryItems.findMany({
       where: and(
-        eq(inventoryItems.name, String(itemData.name)),
-        eq(inventoryItems.quantity, String(itemData.quantity)),
-        eq(inventoryItems.unit, String(itemData.unit)),
-        eq(inventoryItems.category, String(itemData.category)),
-        eq(inventoryItems.barcode, itemData.barcode)
+        eq(inventoryItems.name, String(itemData.name || "")),
+        eq(inventoryItems.quantity, String(itemData.quantity || "")),
+        eq(inventoryItems.unit, String(itemData.unit || "")),
+        eq(inventoryItems.category, String(itemData.category || "")),
+        eq(inventoryItems.barcode, itemData.barcode || "")
       )
     });
     if (existingItems.length > 0) {
@@ -1211,13 +1245,13 @@ var storage = {
       quantity: String(itemData.quantity || ""),
       unit: String(itemData.unit || ""),
       count: itemData.count || 1,
-      barcode: itemData.barcode,
+      barcode: itemData.barcode || "",
       location: itemData.location || "",
       category: itemData.category || "",
-      expiry_date: itemData.expiry_date ? new Date(itemData.expiry_date).toISOString() : null,
-      image_url: itemData.image_url,
-      created_at: (/* @__PURE__ */ new Date()).toISOString(),
-      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+      expiry_date: itemData.expiry_date ? new Date(itemData.expiry_date) : null,
+      image_url: itemData.image_url || null,
+      created_at: /* @__PURE__ */ new Date(),
+      updated_at: /* @__PURE__ */ new Date()
     }).returning();
     return insertedItem;
   },
@@ -1231,7 +1265,7 @@ var storage = {
   // Shopping list operations
   async getAllShoppingItems() {
     return db.query.shoppingItems.findMany({
-      orderBy: desc(shoppingItems.createdAt)
+      orderBy: desc(shoppingItems.created_at)
     });
   },
   async getShoppingItemById(id) {
@@ -1241,27 +1275,29 @@ var storage = {
   },
   async getShoppingItemsByCategory() {
     const items = await db.query.shoppingItems.findMany({
-      orderBy: (shoppingItems2, { asc }) => [asc(shoppingItems2.category)]
+      orderBy: (items2, { asc }) => [asc(items2.category)]
     });
     const categorizedItems = {};
     items.forEach((item) => {
-      if (!categorizedItems[item.category]) {
-        categorizedItems[item.category] = [];
+      const category = item.category || "Other";
+      if (!categorizedItems[category]) {
+        categorizedItems[category] = [];
       }
-      categorizedItems[item.category].push(item);
+      categorizedItems[category].push(item);
     });
-    return Object.keys(categorizedItems).map((categoryName) => ({
-      name: categoryName,
-      items: categorizedItems[categoryName]
+    return Object.entries(categorizedItems).map(([category, items2]) => ({
+      name: category,
+      category,
+      items: items2
     }));
   },
   async createShoppingItem(itemData) {
     const existingItems = await db.query.shoppingItems.findMany({
       where: and(
-        eq(shoppingItems.name, String(itemData.name)),
-        eq(shoppingItems.quantity, String(itemData.quantity)),
-        eq(shoppingItems.unit, String(itemData.unit)),
-        eq(shoppingItems.category, String(itemData.category))
+        eq(shoppingItems.name, String(itemData.name || "")),
+        eq(shoppingItems.quantity, String(itemData.quantity || "")),
+        eq(shoppingItems.unit, String(itemData.unit || "")),
+        eq(shoppingItems.category, String(itemData.category || "Other"))
       )
     });
     if (existingItems.length > 0) {
@@ -1270,11 +1306,11 @@ var storage = {
     const [insertedItem] = await db.insert(shoppingItems).values({
       name: String(itemData.name || ""),
       quantity: String(itemData.quantity || ""),
-      unit: String(itemData.unit || ""),
-      category: String(itemData.category || ""),
-      checked: itemData.checked ? 1 : 0,
-      created_at: (/* @__PURE__ */ new Date()).toISOString(),
-      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+      unit: String(itemData.unit || "unit"),
+      category: String(itemData.category || "Other"),
+      checked: false,
+      created_at: /* @__PURE__ */ new Date(),
+      updated_at: /* @__PURE__ */ new Date()
     }).returning();
     return insertedItem;
   },
@@ -1302,16 +1338,20 @@ var storage = {
       throw new Error("Recipe has no ingredients");
     }
     for (const ingredient of recipe.ingredients) {
-      if (!ingredient.name || !ingredient.quantity) {
+      if (!ingredient.name) {
         console.warn(`Skipping invalid ingredient in recipe ${recipeId}:`, ingredient);
         continue;
       }
-      await this.createShoppingItem({
-        name: ingredient.name,
-        quantity: ingredient.quantity,
-        unit: ingredient.unit || "unit",
-        category: this.categorizeIngredient(ingredient.name)
-      });
+      try {
+        await this.createShoppingItem({
+          name: ingredient.name,
+          quantity: ingredient.quantity || "1",
+          unit: ingredient.unit || "unit",
+          category: this.categorizeIngredient(ingredient.name)
+        });
+      } catch (error) {
+        console.error(`Error adding ingredient ${ingredient.name} to shopping list:`, error);
+      }
     }
   },
   // Helper function to categorize ingredients
@@ -1346,8 +1386,8 @@ var storage = {
         location: "Pantry",
         category: "Other",
         image_url: productInfo.image_url || null,
-        created_at: (/* @__PURE__ */ new Date()).toISOString(),
-        updated_at: (/* @__PURE__ */ new Date()).toISOString()
+        created_at: /* @__PURE__ */ new Date(),
+        updated_at: /* @__PURE__ */ new Date()
       };
       const existingItems = await db.select().from(inventoryItems).where(eq(inventoryItems.barcode, barcode));
       if (existingItems.length > 0) {
@@ -1371,7 +1411,8 @@ var storage = {
         }
       });
       await db.delete(shoppingItems2);
-      for (const item of uniqueShoppingItems.values()) {
+      const uniqueShoppingArray = Array.from(uniqueShoppingItems.values());
+      for (const item of uniqueShoppingArray) {
         await db.insert(shoppingItems2).values(item);
       }
       const inventoryItems2 = await db.query.inventoryItems.findMany();
@@ -1383,7 +1424,8 @@ var storage = {
         }
       });
       await db.delete(inventoryItems2);
-      for (const item of uniqueInventoryItems.values()) {
+      const uniqueInventoryArray = Array.from(uniqueInventoryItems.values());
+      for (const item of uniqueInventoryArray) {
         await db.insert(inventoryItems2).values(item);
       }
       const recipes2 = await db.query.recipes.findMany();
@@ -1395,7 +1437,8 @@ var storage = {
         }
       });
       await db.delete(recipes2);
-      for (const recipe of uniqueRecipes.values()) {
+      const uniqueRecipesArray = Array.from(uniqueRecipes.values());
+      for (const recipe of uniqueRecipesArray) {
         await db.insert(recipes2).values(recipe);
       }
       console.log("Successfully removed duplicates from all tables");
@@ -1403,6 +1446,10 @@ var storage = {
       console.error("Error removing duplicates:", error);
       throw error;
     }
+  },
+  // Helper function to convert array to Set
+  arrayToSet(arr) {
+    return new Set(arr);
   }
 };
 
@@ -1933,7 +1980,17 @@ import https from "https";
 import fs2 from "fs";
 import path3 from "path";
 import { fileURLToPath } from "url";
-import { constants } from "crypto";
+
+// server/db.ts
+import { drizzle as drizzle2 } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+var DATABASE_URL = process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/grocerymanager";
+var pool2 = new Pool({
+  connectionString: DATABASE_URL
+});
+var db2 = drizzle2(pool2, { schema: schema_exports });
+
+// server/index.ts
 var __filename = fileURLToPath(import.meta.url);
 var __dirname = path3.dirname(__filename);
 var app = express2();
@@ -1963,6 +2020,32 @@ app.use((req, res, next) => {
   });
   next();
 });
+async function initializeDatabase() {
+  try {
+    if (process.env.DATABASE_URL?.includes("postgresql://")) {
+      console.log("Using PostgreSQL database");
+      const client = await pool2.connect();
+      try {
+        const migrationFile = path3.join(__dirname, "migrations/001_initial_schema.sql");
+        const migration = fs2.readFileSync(migrationFile, "utf8");
+        await client.query(migration);
+        console.log("Database migrations completed successfully");
+      } catch (error) {
+        console.error("Error running migrations:", error);
+        throw error;
+      } finally {
+        client.release();
+      }
+    } else {
+      console.log("Warning: DATABASE_URL environment variable is not set.");
+      console.log("Using a local SQLite database for development.");
+      console.log("Successfully initialized local SQLite database for development.");
+    }
+  } catch (error) {
+    console.error("Error initializing database:", error);
+    throw error;
+  }
+}
 (async () => {
   const server = await registerRoutes(app);
   app.use((err, _req, res, _next) => {
@@ -1976,15 +2059,13 @@ app.use((req, res, next) => {
   } else {
     serveStatic(app);
   }
-  const httpsOptions = {
-    key: fs2.readFileSync(path3.join(__dirname, "../cert/localhost-key.pem")),
-    cert: fs2.readFileSync(path3.join(__dirname, "../cert/localhost.pem")),
-    // Add security headers
-    secureOptions: constants.SSL_OP_NO_SSLv3 | constants.SSL_OP_NO_TLSv1,
-    ciphers: "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384:DHE-RSA-AES256-SHA384:ECDHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA256:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA"
+  await initializeDatabase();
+  const options = {
+    key: fs2.readFileSync(path3.join(__dirname, "../certs/key.pem")),
+    cert: fs2.readFileSync(path3.join(__dirname, "../certs/cert.pem"))
   };
-  const httpsServer = https.createServer(httpsOptions, app);
   const PORT = parseInt(process.env.PORT || "5001", 10);
+  const httpsServer = https.createServer(options, app);
   httpsServer.listen(PORT, "0.0.0.0", () => {
     log(`HTTPS Server running on https://localhost:${PORT}`);
     log(`HTTPS Server running on https://192.168.1.210:${PORT}`);

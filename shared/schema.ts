@@ -1,14 +1,14 @@
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
-import { relations } from "drizzle-orm";
+import { pgTable, serial, text, integer, boolean, timestamp, decimal, jsonb } from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
+import { createInsertSchema } from 'drizzle-zod';
+import { z } from 'zod';
 
 // Users table
-export const users = sqliteTable("users", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  created_at: text("created_at").notNull().default("datetime('now')")
+export const users = pgTable('users', {
+  id: serial('id').primaryKey(),
+  username: text('username').notNull().unique(),
+  password: text('password').notNull(),
+  created_at: timestamp('created_at').defaultNow()
 });
 
 // Login and register schemas
@@ -24,63 +24,63 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 export type User = typeof users.$inferSelect;
 
 // Recipes table
-export const recipes = sqliteTable("recipes", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  title: text("title").notNull().unique(),
-  description: text("description").notNull(),
-  prep_time: integer("prep_time").notNull(),
-  servings: integer("servings").notNull(),
-  difficulty: text("difficulty").notNull(),
-  rating: real("rating").notNull(),
-  rating_count: integer("rating_count").notNull(),
-  image_url: text("image_url").notNull(),
-  url: text("url"),
-  instructions: text("instructions").notNull(),
-  storage_instructions: text("storage_instructions"),
-  is_favorite: integer("is_favorite").notNull().default(0),
-  cost_per_serving: real("cost_per_serving").notNull(),
-  nutrition: text("nutrition").notNull(),
-  comments: text("comments"),
-  created_at: text("created_at").notNull().default("datetime('now')"),
-  updated_at: text("updated_at").notNull().default("datetime('now')")
+export const recipes = pgTable('recipes', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull(),
+  description: text('description'),
+  prep_time: integer('prep_time').default(30),
+  servings: integer('servings').default(2),
+  difficulty: text('difficulty').default('Easy'),
+  rating: integer('rating').default(0),
+  rating_count: integer('rating_count').default(0),
+  image_url: text('image_url'),
+  url: text('url'),
+  instructions: jsonb('instructions').default('[]'),
+  storage_instructions: text('storage_instructions'),
+  is_favorite: boolean('is_favorite').default(false),
+  cost_per_serving: decimal('cost_per_serving', { precision: 10, scale: 2 }).default('0'),
+  nutrition: jsonb('nutrition').default('{"calories":0,"protein":0,"carbs":0,"fat":0}'),
+  comments: jsonb('comments').default('[]'),
+  created_at: timestamp('created_at').defaultNow(),
+  updated_at: timestamp('updated_at').defaultNow()
 });
 
 // Recipe ingredients table
-export const recipeIngredients = sqliteTable("recipe_ingredients", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  recipe_id: integer("recipe_id").notNull().references(() => recipes.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  quantity: text("quantity").notNull(),
-  unit: text("unit").notNull(),
-  created_at: text("created_at").notNull().default("datetime('now')")
+export const recipeIngredients = pgTable('recipe_ingredients', {
+  id: serial('id').primaryKey(),
+  recipe_id: integer('recipe_id').references(() => recipes.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  quantity: text('quantity').notNull(),
+  unit: text('unit').notNull(),
+  created_at: timestamp('created_at').defaultNow()
 });
 
 // Inventory items table
-export const inventoryItems = sqliteTable("inventory_items", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  name: text("name").notNull(),
-  quantity: text("quantity").notNull(),
-  unit: text("unit").notNull(),
-  count: integer("count").notNull(),
-  barcode: text("barcode"),
-  location: text("location").notNull(),
-  category: text("category").notNull(),
-  expiry_date: text("expiry_date"),
-  image_url: text("image_url"),
-  created_at: text("created_at").notNull().default("datetime('now')"),
-  updated_at: text("updated_at").notNull().default("datetime('now')")
+export const inventoryItems = pgTable('inventory_items', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  quantity: text('quantity').notNull(),
+  unit: text('unit').notNull(),
+  count: integer('count').default(1),
+  barcode: text('barcode'),
+  location: text('location'),
+  category: text('category'),
+  expiry_date: timestamp('expiry_date'),
+  image_url: text('image_url'),
+  created_at: timestamp('created_at').defaultNow(),
+  updated_at: timestamp('updated_at').defaultNow()
 });
 
 // Shopping items table
-export const shoppingItems = sqliteTable("shopping_items", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  name: text("name").notNull(),
-  quantity: text("quantity").notNull(),
-  unit: text("unit").notNull(),
-  category: text("category").notNull(),
-  checked: integer("checked").notNull().default(0),
-  created_at: text("created_at").notNull().default("datetime('now')"),
-  updated_at: text("updated_at").notNull().default("datetime('now')")
+export const shoppingItems = pgTable('shopping_items', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  quantity: text('quantity').notNull(),
+  unit: text('unit').notNull(),
+  category: text('category'),
+  checked: boolean('checked').default(false),
+  created_at: timestamp('created_at').defaultNow(),
+  updated_at: timestamp('updated_at').defaultNow()
 });
 
 // Relations
@@ -118,10 +118,13 @@ export const insertInventoryItemSchema = createInsertSchema(inventoryItems, {
 export type Recipe = typeof recipes.$inferSelect & {
   ingredients: Ingredient[];
 };
-
+export type NewRecipe = typeof recipes.$inferInsert;
 export type Ingredient = typeof recipeIngredients.$inferSelect;
+export type NewIngredient = typeof recipeIngredients.$inferInsert;
 export type InventoryItem = typeof inventoryItems.$inferSelect;
+export type NewInventoryItem = typeof inventoryItems.$inferInsert;
 export type ShoppingItem = typeof shoppingItems.$inferSelect;
+export type NewShoppingItem = typeof shoppingItems.$inferInsert;
 export type ShoppingCategory = {
   name: string;
   items: ShoppingItem[];
