@@ -496,6 +496,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Remove duplicates from all tables
+  app.post('/api/cleanup/remove-duplicates', async (req, res) => {
+    try {
+      await storage.removeDuplicates();
+      res.json({ success: true, message: 'Successfully removed duplicates from all tables' });
+    } catch (error) {
+      console.error('Error removing duplicates:', error);
+      res.status(500).json({ message: 'Failed to remove duplicates' });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;

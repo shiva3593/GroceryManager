@@ -1,40 +1,56 @@
 #!/bin/bash
 
-# Grocery Manager Setup Script
-# This script sets up the environment and starts the application
-
-# Set development mode
-export NODE_ENV=development
-
-# Load environment variables from .env file if it exists
-if [ -f .env ]; then
-  echo "Loading environment variables from .env file..."
-  export $(grep -v '^#' .env | xargs)
+# Check if required software is installed
+if ! command -v node &> /dev/null; then
+    echo "Node.js is not installed. Please install Node.js first."
+    exit 1
 fi
 
-# Check if DATABASE_URL is set, provide info if not
-if [ -z "$DATABASE_URL" ]; then
-  echo "No DATABASE_URL environment variable detected."
-  echo "The application will use a local SQLite database for development."
-  echo "To use PostgreSQL, create a .env file with DATABASE_URL set."
-else
-  echo "Using PostgreSQL database connection."
+if ! command -v npm &> /dev/null; then
+    echo "npm is not installed. Please install npm first."
+    exit 1
 fi
 
-# Install dependencies if node_modules doesn't exist
-if [ ! -d "node_modules" ]; then
-  echo "Installing dependencies..."
-  npm install
+if ! command -v openssl &> /dev/null; then
+    echo "OpenSSL is not installed. Please install OpenSSL first."
+    exit 1
 fi
 
-# Initialize the database schema
-echo "Applying database migrations..."
-npm run db:push
+# Create necessary directories
+mkdir -p server/certs
+mkdir -p db
 
-# Seed the database with initial data
-echo "Seeding the database..."
-npm run db:seed
+# Generate SSL certificates
+echo "Generating SSL certificates..."
+openssl req -x509 -newkey rsa:4096 -keyout server/certs/key.pem -out server/certs/cert.pem -days 365 -nodes \
+    -subj "/CN=localhost" \
+    -addext "subjectAltName=IP:192.168.1.210,DNS:localhost"
 
-# Start the application
-echo "Starting the application..."
+# Initialize SQLite database
+echo "Initializing database..."
+rm -f db/local_dev.db
+sqlite3 db/local_dev.db < db/migrations.sql
+
+# Install dependencies
+echo "Installing dependencies..."
+npm install
+
+# Build client
+echo "Building client..."
+cd client
+npm install
+npm run build
+cd ..
+
+# Start server
+echo "Starting server..."
 npm run dev
+
+echo "Setup complete! You can now access the application at:"
+echo "https://192.168.1.210:5001"
+echo ""
+echo "To trust the SSL certificate in Safari:"
+echo "1. Open https://192.168.1.210:5001 in Safari"
+echo "2. Click 'Show Certificate' in the security warning"
+echo "3. Click 'Trust' and select 'Always Trust'"
+echo "4. Enter your password when prompted"

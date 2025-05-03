@@ -210,7 +210,7 @@ export default function BarcodeScanner({ isOpen, onClose, onDetected }: BarcodeS
       try {
         Quagga.stop();
       } catch (e) {
-        // Ignore errors
+        console.warn("Error stopping previous scanner instance:", e);
       }
       
       // First check if MediaDevices is supported
@@ -220,10 +220,39 @@ export default function BarcodeScanner({ isOpen, onClose, onDetected }: BarcodeS
         setScanning(false);
         return;
       }
+
+      // Safari-specific handling
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const isSecure = window.location.protocol === 'https:';
+      
+      if (isSafari && !isLocalhost && !isSecure) {
+        console.error("Safari requires HTTPS for camera access on non-localhost domains");
+        toast({
+          title: "HTTPS Required",
+          description: "Camera access requires HTTPS. Please use the secure URL.",
+          variant: "destructive"
+        });
+        setScanError(true);
+        setScanning(false);
+        return;
+      }
       
       // More reliable camera access by checking permissions first
-      navigator.mediaDevices.getUserMedia({ video: true })
+      navigator.mediaDevices.getUserMedia({ 
+        video: {
+          facingMode: "environment",
+          width: { min: 640, ideal: 1280, max: 1920 },
+          height: { min: 480, ideal: 720, max: 1080 },
+          // Safari-specific constraints
+          ...(isSafari ? {
+            frameRate: { ideal: 30, max: 30 },
+            aspectRatio: { ideal: 1.7777777778 } // 16:9
+          } : {})
+        }
+      })
         .then((stream) => {
+          console.log("Camera access granted, initializing Quagga...");
           // Stop the stream right away (we just needed to check permissions)
           stream.getTracks().forEach(track => track.stop());
           
@@ -232,6 +261,37 @@ export default function BarcodeScanner({ isOpen, onClose, onDetected }: BarcodeS
         })
         .catch((err) => {
           console.error("Error accessing camera:", err);
+          if (err.name === 'NotAllowedError') {
+            console.error("Camera permission denied by user");
+            toast({
+              title: "Camera Permission Required",
+              description: isSafari 
+                ? "Please go to Safari Preferences > Websites > Camera and allow access for this website."
+                : "Please allow camera access to use the barcode scanner",
+              variant: "destructive"
+            });
+          } else if (err.name === 'NotFoundError') {
+            console.error("No camera found on device");
+            toast({
+              title: "No Camera Found",
+              description: "No camera was found on your device",
+              variant: "destructive"
+            });
+          } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+            console.error("Camera is already in use");
+            toast({
+              title: "Camera in Use",
+              description: "The camera is already in use by another application. Please close other applications using the camera.",
+              variant: "destructive"
+            });
+          } else {
+            console.error("Unknown camera error:", err);
+            toast({
+              title: "Camera Error",
+              description: "Could not access camera. Please try again or use manual entry",
+              variant: "destructive"
+            });
+          }
           setScanError(true);
           setScanning(false);
           scannerInitialized.current = false;
@@ -259,6 +319,8 @@ export default function BarcodeScanner({ isOpen, onClose, onDetected }: BarcodeS
       constraints.height = { min: 480, ideal: 540, max: 960 };
     }
     
+    console.log("Initializing Quagga with constraints:", constraints);
+    
     // Performance-oriented settings for Quagga with enhanced angle detection
     Quagga.init({
       inputStream: {
@@ -280,7 +342,7 @@ export default function BarcodeScanner({ isOpen, onClose, onDetected }: BarcodeS
         halfSample: false    // Full sample for better accuracy with tilted barcodes
       },
       numOfWorkers: 4,      // More workers for faster processing
-      frequency: 10,        // Higher frequency for more frequent scanning
+      frequency: 10,
       decoder: {
         readers: [
           "ean_reader",      // Standard retail barcodes
@@ -300,12 +362,16 @@ export default function BarcodeScanner({ isOpen, onClose, onDetected }: BarcodeS
           drawScanline: true,
           showPattern: true
         }
-        // Note: Quagga doesn't support tryHarder option directly, using other optimizations instead
       },
       locate: true,         // Always try to locate the barcode
     }, (err) => {
       if (err) {
         console.error("Error starting Quagga:", err);
+        toast({
+          title: "Scanner Error",
+          description: "Failed to initialize barcode scanner. Please try again or use manual entry.",
+          variant: "destructive"
+        });
         setScanError(true);
         setScanning(false);
         scannerInitialized.current = false;

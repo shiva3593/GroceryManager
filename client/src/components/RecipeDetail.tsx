@@ -43,7 +43,7 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
   
   useEffect(() => {
     if (recipe) {
-      setIsFavorited(recipe.isFavorite || false);
+      setIsFavorited(Boolean(recipe.is_favorite));
       setIngredients(recipe.ingredients || []);
     }
   }, [recipe]);
@@ -52,7 +52,7 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
 
   const toggleFavorite = async () => {
     try {
-      await apiRequest('PUT', `/api/recipes/${recipe.id}/favorite`, { isFavorite: !isFavorited });
+      await apiRequest('PUT', `/api/recipes/${recipe.id}/favorite`, { is_favorite: !isFavorited });
       setIsFavorited(!isFavorited);
       toast({
         title: "Success",
@@ -96,7 +96,7 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
 
   const addToShoppingList = async () => {
     try {
-      await apiRequest('POST', `/api/shopping-list/from-recipe`, { recipeId: recipe.id });
+      await apiRequest('POST', `/api/shopping-list/from-recipe`, { recipe_id: recipe.id });
       toast({
         title: "Success",
         description: "Added ingredients to shopping list",
@@ -125,7 +125,7 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
     setIngredients([...ingredients, { 
       ...newIngredient as Ingredient, 
       id: Math.random(), // Temporary ID until saved
-      recipeId: recipe.id 
+      recipe_id: recipe.id 
     }]);
     
     // Clear the form
@@ -151,11 +151,15 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
       // Update the recipe with modified ingredients
       const updatedRecipe = await apiRequest('PUT', `/api/recipes/${recipe.id}`, {
         ...recipe,
-        ingredients: ingredients
+        ingredients: ingredients.map(ing => ({
+          ...ing,
+          recipe_id: recipe.id,
+          created_at: new Date().toISOString()
+        }))
       });
       
       // Update the local state and exit editing mode
-      setIngredients(updatedRecipe.ingredients);
+      setIngredients(updatedRecipe.ingredients || []);
       setIsEditingIngredients(false);
       
       // Invalidate queries to refresh recipe data
@@ -177,6 +181,9 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
     }
   };
 
+  // Parse JSON fields
+  const parsedInstructions = recipe.instructions ? JSON.parse(recipe.instructions) : [];
+  const parsedNutrition = recipe.nutrition ? JSON.parse(recipe.nutrition) : { calories: 0, protein: 0, carbs: 0, fat: 0 };
   // Convert string rating to number for star display
   const ratingNum = typeof recipe.rating === 'string' ? parseFloat(recipe.rating) : Number(recipe.rating) || 0;
 
@@ -192,9 +199,9 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
           </DialogHeader>
 
           <div className="overflow-y-auto">
-            <div className="h-56 bg-slate-100 relative">
-              <img src={recipe.imageUrl} alt={recipe.title} className="w-full h-full object-cover" />
-              <div className="absolute top-4 right-4 flex space-x-2">
+            <div className="h-48 sm:h-56 bg-slate-100 relative">
+              <img src={recipe.image_url} alt={recipe.title} className="w-full h-full object-cover" />
+              <div className="absolute top-2 right-2 flex space-x-2">
                 <button className="p-2 bg-white/90 rounded-full text-slate-700 hover:bg-white">
                   <i className="fas fa-pencil-alt"></i>
                 </button>
@@ -211,7 +218,7 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
             </div>
 
             <div className="p-4">
-              <h1 className="text-2xl font-bold text-slate-900 mb-1">{recipe.title}</h1>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-1">{recipe.title}</h1>
               
               {/* Show original URL if available */}
               {recipe.url && (
@@ -226,28 +233,20 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
                 </a>
               )}
               
-              <div className="flex items-center text-sm text-slate-500 mb-4">
-                <span className="flex items-center mr-4"><i className="far fa-clock mr-1"></i> {recipe.prepTime} minutes</span>
-                <span className="flex items-center mr-4"><i className="fas fa-utensils mr-1"></i> {recipe.difficulty}</span>
-                <span className="flex items-center"><i className="fas fa-users mr-1"></i> Serves {recipe.servings}</span>
-              </div>
-
-              <div className="flex items-center mb-4">
-                <div className="flex items-center bg-primary/10 px-2 py-1 rounded-md">
-                  <span className="text-primary font-medium mr-1">{recipe.rating}</span>
-                  <div className="flex text-primary">
-                    {Array(Math.floor(ratingNum)).fill(null).map((_, i) => (
-                      <i key={i} className="fas fa-star text-xs"></i>
-                    ))}
-                    {(ratingNum % 1) >= 0.5 && <i className="fas fa-star-half-alt text-xs"></i>}
-                  </div>
+              <div className="flex flex-wrap gap-2 text-sm text-slate-500 mb-4">
+                <div className="flex items-center">
+                  <i className="fas fa-clock mr-1"></i>
+                  <span>{recipe.prep_time} minutes</span>
                 </div>
-                <span className="text-xs text-slate-500 ml-2">({recipe.ratingCount} ratings)</span>
+                <div className="flex items-center">
+                  <i className="fas fa-star mr-1"></i>
+                  <span>{recipe.rating_count} ratings</span>
+                </div>
               </div>
 
               <p className="text-slate-700 mb-6 recipe-content">{recipe.description}</p>
 
-              <div className="flex items-center space-x-2 mb-6">
+              <div className="flex flex-wrap gap-2 mb-6">
                 <Button 
                   onClick={addToShoppingList}
                   className="bg-secondary hover:bg-secondary/90"
@@ -272,22 +271,22 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
               {/* Nutrition Facts */}
               <div className="mb-6">
                 <h2 className="text-lg font-semibold mb-3">Nutrition Facts</h2>
-                <div className="flex flex-wrap gap-2">
-                  <div className="flex-1 min-w-[100px] bg-slate-50 rounded-lg p-3 text-center">
-                    <span className="block text-lg font-bold text-slate-900">{recipe.nutrition.calories}</span>
-                    <span className="text-xs text-slate-500">Calories</span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
+                  <div className="bg-slate-50 p-3 sm:p-4 rounded-lg">
+                    <h4 className="font-medium text-slate-700">Calories</h4>
+                    <p className="text-xl sm:text-2xl font-bold text-primary">{parsedNutrition.calories}</p>
                   </div>
-                  <div className="flex-1 min-w-[100px] bg-slate-50 rounded-lg p-3 text-center">
-                    <span className="block text-lg font-bold text-slate-900">{recipe.nutrition.protein}g</span>
-                    <span className="text-xs text-slate-500">Protein</span>
+                  <div className="bg-slate-50 p-3 sm:p-4 rounded-lg">
+                    <h4 className="font-medium text-slate-700">Protein</h4>
+                    <p className="text-xl sm:text-2xl font-bold text-primary">{parsedNutrition.protein}g</p>
                   </div>
-                  <div className="flex-1 min-w-[100px] bg-slate-50 rounded-lg p-3 text-center">
-                    <span className="block text-lg font-bold text-slate-900">{recipe.nutrition.carbs}g</span>
-                    <span className="text-xs text-slate-500">Carbs</span>
+                  <div className="bg-slate-50 p-3 sm:p-4 rounded-lg">
+                    <h4 className="font-medium text-slate-700">Carbs</h4>
+                    <p className="text-xl sm:text-2xl font-bold text-primary">{parsedNutrition.carbs}g</p>
                   </div>
-                  <div className="flex-1 min-w-[100px] bg-slate-50 rounded-lg p-3 text-center">
-                    <span className="block text-lg font-bold text-slate-900">{recipe.nutrition.fat}g</span>
-                    <span className="text-xs text-slate-500">Fat</span>
+                  <div className="bg-slate-50 p-3 sm:p-4 rounded-lg">
+                    <h4 className="font-medium text-slate-700">Fat</h4>
+                    <p className="text-xl sm:text-2xl font-bold text-primary">{parsedNutrition.fat}g</p>
                   </div>
                 </div>
               </div>
@@ -376,7 +375,7 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
                     {/* Add new ingredient form */}
                     <div className="border border-slate-200 rounded-md p-3 mt-4">
                       <h3 className="text-sm font-medium mb-2">Add New Ingredient</h3>
-                      <div className="grid grid-cols-3 gap-2 mb-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
                         <div>
                           <Label htmlFor="quantity" className="text-xs">Quantity</Label>
                           <Input 
@@ -418,62 +417,38 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
                     </div>
                   </div>
                 )}
-                
-                {!isEditingIngredients && (
-                  <div className="mt-4 flex justify-end">
-                    <button className="text-sm text-primary font-medium">Check Inventory Status</button>
-                  </div>
-                )}
               </div>
 
               {/* Preparation Steps */}
               <div className="mb-6">
                 <h2 className="text-lg font-semibold mb-3">Instructions</h2>
-                <ol className="list-decimal pl-5 space-y-4 recipe-content">
-                  {recipe.instructions.map((step, index) => (
-                    <li key={index}>
-                      <p>{step}</p>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-
-              {/* Storage Suggestions */}
-              {recipe.storageInstructions && (
-                <div className="bg-slate-50 p-4 rounded-lg mb-6">
-                  <h2 className="text-md font-semibold mb-2">Storage Suggestions</h2>
-                  <p className="text-sm text-slate-700 recipe-content">{recipe.storageInstructions}</p>
-                </div>
-              )}
-
-              {/* Comments Section */}
-              <div>
-                <h2 className="text-lg font-semibold mb-3">Comments ({recipe.comments?.length || 0})</h2>
                 <div className="space-y-4">
-                  {recipe.comments?.map((comment, index) => (
-                    <div key={index} className="bg-slate-50 p-3 rounded-lg">
-                      <div className="flex justify-between items-center mb-2">
-                        <div className="flex items-center">
-                          <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-medium text-sm">
-                            {comment.author.split(' ').map(n => n[0]).join('')}
-                          </div>
-                          <span className="ml-2 font-medium">{comment.author}</span>
-                        </div>
-                        <div className="text-xs text-slate-500">{comment.date}</div>
-                      </div>
-                      <p className="text-sm text-slate-700">{comment.text}</p>
+                  {parsedInstructions.map((step: string, index: number) => (
+                    <div key={index} className="flex items-start space-x-3">
+                      <span className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-primary text-white text-sm font-medium">
+                        {index + 1}
+                      </span>
+                      <p className="text-slate-700">{step}</p>
                     </div>
                   ))}
                 </div>
-                
-                <div className="mt-4">
-                  <textarea 
-                    placeholder="Add a comment..." 
-                    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-1 focus:ring-primary focus:border-primary"
-                  ></textarea>
-                  <div className="flex justify-end mt-2">
-                    <Button className="px-3 py-1.5 bg-primary text-white rounded-md">Post Comment</Button>
-                  </div>
+              </div>
+
+              {/* Storage Instructions */}
+              <div className="mb-6">
+                <h2 className="text-lg font-semibold mb-3">Storage Instructions</h2>
+                <p className="text-slate-700">{recipe.storage_instructions}</p>
+              </div>
+
+              {/* Comments */}
+              <div className="mb-6">
+                <h2 className="text-lg font-semibold mb-3">Comments</h2>
+                <div className="space-y-4">
+                  {recipe.comments ? JSON.parse(recipe.comments).map((comment: string, index: number) => (
+                    <div key={index} className="bg-slate-50 p-4 rounded-lg">
+                      <p className="text-slate-700">{comment}</p>
+                    </div>
+                  )) : null}
                 </div>
               </div>
             </div>

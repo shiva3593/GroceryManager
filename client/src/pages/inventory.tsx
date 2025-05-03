@@ -40,7 +40,7 @@ const inventoryFormSchema = z.object({
   unit: z.string().min(1, "Unit is required"),
   count: z.coerce.number().int().positive("Count must be positive"),
   location: z.string().min(1, "Location is required"),
-  expiryDate: z.string().optional(),
+  expiry_date: z.string().optional(),
   category: z.string().min(1, "Category is required"),
 });
 
@@ -62,7 +62,7 @@ export default function Inventory() {
       unit: "unit",
       count: 1,
       location: "Pantry",
-      expiryDate: "",
+      expiry_date: "",
       category: "Pantry",
     },
   });
@@ -154,7 +154,7 @@ export default function Inventory() {
           unit: productInfo.unit || 'unit',
           count: productInfo.count || 1,
           location: productInfo.location || 'Pantry',
-          expiryDate: productInfo.expiryDate || '',
+          expiry_date: productInfo.expiryDate || '',
           category: productInfo.category || 'Other'
         });
         
@@ -174,7 +174,7 @@ export default function Inventory() {
         unit: "unit",
         count: 1,
         location: "Pantry",
-        expiryDate: "",
+        expiry_date: "",
         category: "Other"
       });
       
@@ -254,8 +254,8 @@ export default function Inventory() {
     
     // Format the expiry date for the form (YYYY-MM-DD format required by date input)
     let formattedExpiryDate = "";
-    if (item.expiryDate) {
-      const date = new Date(item.expiryDate);
+    if (item.expiry_date) {
+      const date = new Date(item.expiry_date);
       formattedExpiryDate = date.toISOString().split('T')[0];
     }
     
@@ -268,7 +268,7 @@ export default function Inventory() {
       count: item.count,
       category: item.category,
       location: item.location,
-      expiryDate: formattedExpiryDate
+      expiry_date: formattedExpiryDate
     });
     
     // Open the edit dialog
@@ -360,7 +360,7 @@ export default function Inventory() {
               unit: "unit",
               count: 1,
               location: "Pantry",
-              expiryDate: "",
+              expiry_date: "",
               category: "Pantry",
             });
           }
@@ -474,7 +474,7 @@ export default function Inventory() {
 
                 <FormField
                   control={form.control}
-                  name="expiryDate"
+                  name="expiry_date"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Expiry Date</FormLabel>

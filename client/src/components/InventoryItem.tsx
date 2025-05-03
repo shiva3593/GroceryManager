@@ -10,32 +10,30 @@ interface InventoryItemProps {
 
 export default function InventoryItem({ item, onClick, onDelete }: InventoryItemProps) {
   const getExpiryText = () => {
-    if (!item.expiryDate) return null;
-    
-    const expiryDate = new Date(item.expiryDate);
+    if (!item.expiry_date) return null;
+    const expiryDate = new Date(item.expiry_date);
     const today = new Date();
+    const diffDays = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     
-    // Check if valid date
-    if (isNaN(expiryDate.getTime())) return null;
-    
-    const daysUntilExpiry = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (daysUntilExpiry <= 0) {
-      return <p className="text-xs text-red-500 font-medium">Expired</p>;
-    } else if (daysUntilExpiry <= 3) {
-      return <p className="text-xs text-orange-500 font-medium">Expires in {daysUntilExpiry} days</p>;
+    if (diffDays < 0) {
+      return <span className="text-red-500">Expired {Math.abs(diffDays)} days ago</span>;
+    } else if (diffDays === 0) {
+      return <span className="text-red-500">Expires today</span>;
+    } else if (diffDays <= 7) {
+      return <span className="text-yellow-500">Expires in {diffDays} days</span>;
     } else {
-      return <p className="text-xs text-slate-500">Expires {format(expiryDate, 'MMM dd, yyyy')}</p>;
+      return <span className="text-green-500">Expires on {format(expiryDate, 'MMM d, yyyy')}</span>;
     }
   };
 
   const handleClick = (e: React.MouseEvent) => {
-    // Prevent triggering the parent div's onClick when clicking buttons
-    if ((e.target as HTMLElement).closest('button')) {
-      e.stopPropagation();
-    } else {
-      onClick(item);
-    }
+    e.stopPropagation();
+    onClick(item);
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onDelete) onDelete(item);
   };
 
   return (
@@ -44,8 +42,8 @@ export default function InventoryItem({ item, onClick, onDelete }: InventoryItem
       className="flex items-center p-4 bg-white hover:bg-slate-50 cursor-pointer transition-colors relative group"
     >
       <div className="mr-3 w-12 h-12 rounded-md bg-slate-100 flex items-center justify-center overflow-hidden">
-        {item.imageUrl ? (
-          <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full" />
+        {item.image_url ? (
+          <img src={item.image_url} alt={item.name} className="object-cover w-full h-full" />
         ) : (
           <i className="fas fa-box text-slate-400"></i>
         )}
@@ -57,41 +55,20 @@ export default function InventoryItem({ item, onClick, onDelete }: InventoryItem
             <p className="text-xs text-slate-500">
               {item.quantity} {item.unit} • {item.category} • {item.location}
             </p>
+            {getExpiryText() && (
+              <p className="text-xs mt-1">{getExpiryText()}</p>
+            )}
           </div>
-          <div className="text-right">
-            <div className="flex items-center">
-              <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-sm font-medium mr-2">
-                {item.count}
-              </span>
-              <div className="hidden group-hover:flex items-center">
-                <Button 
-                  size="icon" 
-                  variant="ghost" 
-                  className="h-8 w-8" 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onClick(item);
-                  }}
-                >
-                  <i className="fas fa-edit text-slate-500 hover:text-primary text-sm"></i>
-                </Button>
-                {onDelete && (
-                  <Button 
-                    size="icon" 
-                    variant="ghost" 
-                    className="h-8 w-8" 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (onDelete) onDelete(item);
-                    }}
-                  >
-                    <i className="fas fa-trash text-slate-500 hover:text-red-500 text-sm"></i>
-                  </Button>
-                )}
-              </div>
-            </div>
-            {getExpiryText()}
-          </div>
+          {onDelete && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={handleDelete}
+            >
+              <i className="fas fa-trash text-red-500"></i>
+            </Button>
+          )}
         </div>
       </div>
     </div>

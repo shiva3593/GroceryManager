@@ -373,7 +373,7 @@ export const storage = {
   // Recipe operations
   async getAllRecipes(): Promise<Recipe[]> {
     const recipesList = await db.query.recipes.findMany({
-      orderBy: desc(recipes.createdAt),
+      orderBy: desc(recipes.created_at),
       with: {
         ingredients: true
       }
@@ -392,46 +392,41 @@ export const storage = {
   },
 
   async createRecipe(recipeData: Partial<Recipe>): Promise<Recipe> {
-    // Extract ingredients from data if they exist
-    const ingredients = recipeData.ingredients || [];
-    delete recipeData.ingredients;
+    // First check for duplicates
+    const existingRecipes = await db.query.recipes.findMany({
+      where: and(
+        eq(recipes.title, String(recipeData.title)),
+        eq(recipes.url, recipeData.url)
+      )
+    });
 
-    // Default values for required fields if not provided
-    const newRecipeData = {
-      title: recipeData.title || '',
-      description: recipeData.description || '',
-      prepTime: recipeData.prepTime || 30,
-      servings: recipeData.servings || 2,
-      difficulty: recipeData.difficulty || 'Easy',
-      rating: recipeData.rating || 0,
-      ratingCount: recipeData.ratingCount || 0,
-      imageUrl: recipeData.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c',
-      url: recipeData.url || null, // Include the URL field
-      instructions: recipeData.instructions || [],
-      storageInstructions: recipeData.storageInstructions || '',
-      isFavorite: recipeData.isFavorite || false,
-      costPerServing: recipeData.costPerServing || 0,
-      nutrition: recipeData.nutrition || { calories: 0, protein: 0, carbs: 0, fat: 0 },
-      comments: recipeData.comments || []
-    };
-
-    // Insert recipe
-    const [insertedRecipe] = await db.insert(recipes).values(newRecipeData).returning();
-
-    // Insert ingredients if any
-    if (ingredients.length > 0) {
-      await db.insert(recipeIngredients).values(
-        ingredients.map(ingredient => ({
-          recipeId: insertedRecipe.id,
-          name: ingredient.name,
-          quantity: ingredient.quantity,
-          unit: ingredient.unit
-        }))
-      );
+    if (existingRecipes.length > 0) {
+      // If duplicate exists, update the existing recipe instead of creating a new one
+      return existingRecipes[0];
     }
 
-    // Return the complete recipe with ingredients
-    return this.getRecipeById(insertedRecipe.id) as Promise<Recipe>;
+    // If no duplicate exists, create new recipe
+    const [insertedRecipe] = await db.insert(recipes).values({
+      title: String(recipeData.title || ''),
+      description: String(recipeData.description || ''),
+      prep_time: recipeData.prep_time || 30,
+      servings: recipeData.servings || 2,
+      difficulty: String(recipeData.difficulty || 'Easy'),
+      rating: recipeData.rating || 0,
+      rating_count: recipeData.rating_count || 0,
+      image_url: recipeData.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c',
+      url: recipeData.url || null,
+      instructions: JSON.stringify(recipeData.instructions || []),
+      storage_instructions: String(recipeData.storage_instructions || ''),
+      is_favorite: recipeData.is_favorite ? 1 : 0,
+      cost_per_serving: recipeData.cost_per_serving || 0,
+      nutrition: JSON.stringify(recipeData.nutrition || { calories: 0, protein: 0, carbs: 0, fat: 0 }),
+      comments: JSON.stringify(recipeData.comments || []),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }).returning();
+
+    return insertedRecipe;
   },
 
   async updateRecipe(id: number, recipeData: Partial<Recipe>): Promise<Recipe | null> {
@@ -441,22 +436,30 @@ export const storage = {
 
     // Update recipe
     await db.update(recipes)
-      .set({ ...recipeData, updatedAt: new Date() })
+      .set({ 
+        ...recipeData,
+        instructions: recipeData.instructions ? JSON.stringify(recipeData.instructions) : undefined,
+        nutrition: recipeData.nutrition ? JSON.stringify(recipeData.nutrition) : undefined,
+        comments: recipeData.comments ? JSON.stringify(recipeData.comments) : undefined,
+        is_favorite: recipeData.is_favorite ? 1 : 0,
+        updated_at: new Date().toISOString()
+      })
       .where(eq(recipes.id, id));
 
     // Handle ingredients if they were provided
     if (ingredients.length > 0) {
       // Delete existing ingredients
       await db.delete(recipeIngredients)
-        .where(eq(recipeIngredients.recipeId, id));
+        .where(eq(recipeIngredients.recipe_id, id));
 
       // Insert new ingredients
       await db.insert(recipeIngredients).values(
         ingredients.map(ingredient => ({
-          recipeId: id,
+          recipe_id: id,
           name: ingredient.name,
           quantity: ingredient.quantity,
-          unit: ingredient.unit
+          unit: ingredient.unit,
+          created_at: new Date().toISOString()
         }))
       );
     }
@@ -467,7 +470,7 @@ export const storage = {
 
   async updateRecipeFavorite(id: number, isFavorite: boolean): Promise<void> {
     await db.update(recipes)
-      .set({ isFavorite, updatedAt: new Date() })
+      .set({ is_favorite: isFavorite ? 1 : 0, updated_at: new Date().toISOString() })
       .where(eq(recipes.id, id));
   },
 
@@ -490,17 +493,46 @@ export const storage = {
       const $ = cheerio.load(html);
       console.log(`Successfully loaded HTML from ${url}`);
 
-      // Initialize the recipe with default values that will be overridden
       let extractedRecipe: Partial<Recipe> = {
         url: url,
-        isFavorite: false,
-        rating: "0",
-        ratingCount: 0,
-        nutrition: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+        is_favorite: 0,
+        rating: 0,
+        rating_count: 0,
+        nutrition: JSON.stringify({ calories: 0, protein: 0, carbs: 0, fat: 0 }),
+        instructions: '[]', // Initialize as empty JSON array string
+        comments: '[]', // Initialize as empty JSON array string
         ingredients: []
       };
 
-      // Different websites have different structures, need site-specific scraping logic
+      const processInstructions = (rawInstructions: unknown): string => {
+        if (Array.isArray(rawInstructions)) {
+          return JSON.stringify(rawInstructions.map(String));
+        }
+        return '[]';
+      };
+
+      interface RawIngredient {
+        name?: string;
+        quantity?: string | number;
+        unit?: string;
+      }
+
+      const processIngredients = (rawIngredients: RawIngredient[]): Ingredient[] => {
+        return rawIngredients.map(ing => ({
+          name: String(ing?.name || ''),
+          quantity: String(ing?.quantity || '1'),
+          unit: String(ing?.unit || 'unit'),
+          recipe_id: 0,
+          id: 0,
+          created_at: new Date().toISOString()
+        }));
+      };
+
+      const processRecipeData = (rawInstructions: unknown, rawIngredients: unknown[]): void => {
+        extractedRecipe.instructions = processInstructions(rawInstructions);
+        extractedRecipe.ingredients = processIngredients(rawIngredients as RawIngredient[]);
+      };
+
       if (url.includes('tasty.co')) {
         console.log("Parsing Tasty.co recipe");
         
@@ -513,7 +545,7 @@ export const storage = {
                                       $('.description').first().text().trim();
                                       
         // Extract image URL
-        extractedRecipe.imageUrl = $('meta[property="og:image"]').attr('content') || 
+        extractedRecipe.image_url = $('meta[property="og:image"]').attr('content') || 
                                    $('.recipe-image img').first().attr('src');
         
         // Extract instructions
@@ -667,25 +699,24 @@ export const storage = {
         const prepTimeText = $('.prep-time, .cook-time, .total-time').text();
         const prepTimeMatch = prepTimeText.match(/(\d+)/);
         if (prepTimeMatch) {
-          extractedRecipe.prepTime = parseInt(prepTimeMatch[1], 10);
-        } else {
-          extractedRecipe.prepTime = 30; // Default
+          extractedRecipe.prep_time = parseInt(prepTimeMatch[1], 10) || 30;
         }
         
         // Try to extract servings
         const servingsText = $('.servings, .yield').text();
         const servingsMatch = servingsText.match(/(\d+)/);
         if (servingsMatch) {
-          extractedRecipe.servings = parseInt(servingsMatch[1], 10);
-        } else {
-          extractedRecipe.servings = 4; // Default
+          extractedRecipe.servings = parseInt(servingsMatch[1], 10) || 4;
         }
         
-        // Set default values for fields we couldn't extract
         extractedRecipe.difficulty = "Medium";
-        extractedRecipe.storageInstructions = "Store in refrigerator in an airtight container.";
-        extractedRecipe.costPerServing = "5.00";
+        extractedRecipe.storage_instructions = "Store in refrigerator in an airtight container.";
+        extractedRecipe.cost_per_serving = 5.00;
         
+        processRecipeData(
+          Array.isArray(extractedRecipe.instructions) ? extractedRecipe.instructions : [],
+          extractedRecipe.ingredients || []
+        );
       } else if (url.includes('allrecipes.com')) {
         console.log("Parsing AllRecipes recipe");
         
@@ -697,7 +728,7 @@ export const storage = {
                                      $('.recipe-summary').first().text().trim();
         
         // Extract image URL
-        extractedRecipe.imageUrl = $('meta[property="og:image"]').attr('content') || 
+        extractedRecipe.image_url = $('meta[property="og:image"]').attr('content') || 
                                    $('.recipe-image img, .lead-media img').first().attr('src');
         
         // Extract instructions
@@ -731,25 +762,24 @@ export const storage = {
         const prepTimeText = $('.recipe-meta-item, .recipe-details').text();
         const prepTimeMatch = prepTimeText.match(/(\d+)\s*min/i);
         if (prepTimeMatch) {
-          extractedRecipe.prepTime = parseInt(prepTimeMatch[1], 10);
-        } else {
-          extractedRecipe.prepTime = 30; // Default
+          extractedRecipe.prep_time = parseInt(prepTimeMatch[1], 10) || 30;
         }
         
         // Try to extract servings
         const servingsText = $('.recipe-meta-item, .recipe-details').text();
         const servingsMatch = servingsText.match(/Servings:\s*(\d+)/i);
         if (servingsMatch) {
-          extractedRecipe.servings = parseInt(servingsMatch[1], 10);
-        } else {
-          extractedRecipe.servings = 4; // Default
+          extractedRecipe.servings = parseInt(servingsMatch[1], 10) || 4;
         }
         
-        // Set default values
         extractedRecipe.difficulty = "Medium";
-        extractedRecipe.storageInstructions = "Store in refrigerator in an airtight container.";
-        extractedRecipe.costPerServing = "5.00";
+        extractedRecipe.storage_instructions = "Store in refrigerator in an airtight container.";
+        extractedRecipe.cost_per_serving = 5.00;
         
+        processRecipeData(
+          Array.isArray(extractedRecipe.instructions) ? extractedRecipe.instructions : [],
+          extractedRecipe.ingredients || []
+        );
       } else {
         // Generic scraping for other websites
         console.log("Parsing generic recipe website");
@@ -767,7 +797,7 @@ export const storage = {
                                      `Recipe imported from ${url}`;
         
         // Extract image URL
-        extractedRecipe.imageUrl = $('meta[property="og:image"]').attr('content') || 
+        extractedRecipe.image_url = $('meta[property="og:image"]').attr('content') || 
                                   $('.recipe-image img, .post-image img').first().attr('src') || 
                                   "https://images.unsplash.com/photo-1546069901-ba9599a7e63c";
         
@@ -824,21 +854,25 @@ export const storage = {
         ];
         
         // Set default values
-        extractedRecipe.prepTime = 30;
+        extractedRecipe.prep_time = 30;
         extractedRecipe.servings = 4;
         extractedRecipe.difficulty = "Medium";
-        extractedRecipe.storageInstructions = "Store in refrigerator in an airtight container.";
-        extractedRecipe.costPerServing = "5.00";
+        extractedRecipe.storage_instructions = "Store in refrigerator in an airtight container.";
+        extractedRecipe.cost_per_serving = 5.00;
+        
+        processRecipeData(
+          Array.isArray(extractedRecipe.instructions) ? extractedRecipe.instructions : [],
+          extractedRecipe.ingredients || []
+        );
       }
       
       console.log(`Successfully extracted recipe: ${extractedRecipe.title}`);
       
-      // Create and return the recipe
-      return this.createRecipe(extractedRecipe);
-      
+      // Create the recipe in the database
+      return await this.createRecipe(extractedRecipe);
     } catch (error) {
-      console.error("Error importing recipe:", error);
-      throw new Error(`Failed to import recipe from ${url}: ${error.message}`);
+      console.error('Error importing recipe:', error);
+      return null;
     }
   },
 
@@ -865,7 +899,7 @@ export const storage = {
   // Inventory operations
   async getAllInventoryItems(): Promise<InventoryItem[]> {
     return db.query.inventoryItems.findMany({
-      orderBy: desc(inventoryItems.createdAt)
+      orderBy: desc(inventoryItems.created_at)
     });
   },
 
@@ -881,7 +915,7 @@ export const storage = {
     }
     return db.query.inventoryItems.findMany({
       where: eq(inventoryItems.category, category),
-      orderBy: desc(inventoryItems.createdAt)
+      orderBy: desc(inventoryItems.created_at)
     });
   },
 
@@ -917,7 +951,7 @@ export const storage = {
         return {
           id: 0, // This will be assigned by the database when inserted
           name: productInfo.name || '',
-          imageUrl: productInfo.imageUrl || null,
+          image_url: productInfo.imageUrl || null,
           createdAt: new Date(),
           updatedAt: new Date(),
           quantity: productInfo.quantity || '1',
@@ -939,16 +973,35 @@ export const storage = {
   },
 
   async createInventoryItem(itemData: Partial<InventoryItem>): Promise<InventoryItem> {
+    // First check for duplicates
+    const existingItems = await db.query.inventoryItems.findMany({
+      where: and(
+        eq(inventoryItems.name, String(itemData.name)),
+        eq(inventoryItems.quantity, String(itemData.quantity)),
+        eq(inventoryItems.unit, String(itemData.unit)),
+        eq(inventoryItems.category, String(itemData.category)),
+        eq(inventoryItems.barcode, itemData.barcode)
+      )
+    });
+
+    if (existingItems.length > 0) {
+      // If duplicate exists, update the existing item instead of creating a new one
+      return existingItems[0];
+    }
+
+    // If no duplicate exists, create new item
     const [insertedItem] = await db.insert(inventoryItems).values({
-      name: itemData.name || '',
-      quantity: itemData.quantity || '',
-      unit: itemData.unit || '',
+      name: String(itemData.name || ''),
+      quantity: String(itemData.quantity || ''),
+      unit: String(itemData.unit || ''),
       count: itemData.count || 1,
       barcode: itemData.barcode,
       location: itemData.location || '',
       category: itemData.category || '',
-      expiryDate: itemData.expiryDate ? new Date(itemData.expiryDate) : null,
-      imageUrl: itemData.imageUrl
+      expiry_date: itemData.expiry_date ? new Date(itemData.expiry_date).toISOString() : null,
+      image_url: itemData.image_url,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     }).returning();
 
     return insertedItem;
@@ -956,7 +1009,7 @@ export const storage = {
 
   async updateInventoryItem(id: number, itemData: Partial<InventoryItem>): Promise<InventoryItem | null> {
     await db.update(inventoryItems)
-      .set({ ...itemData, updatedAt: new Date() })
+      .set({ ...itemData, updated_at: new Date() })
       .where(eq(inventoryItems.id, id));
 
     return this.getInventoryItemById(id);
@@ -981,7 +1034,9 @@ export const storage = {
   },
 
   async getShoppingItemsByCategory(): Promise<ShoppingCategory[]> {
-    const items = await this.getAllShoppingItems();
+    const items = await db.query.shoppingItems.findMany({
+      orderBy: (shoppingItems, { asc }) => [asc(shoppingItems.category)]
+    });
     
     // Group items by category
     const categorizedItems: { [key: string]: ShoppingItem[] } = {};
@@ -1001,12 +1056,30 @@ export const storage = {
   },
 
   async createShoppingItem(itemData: Partial<ShoppingItem>): Promise<ShoppingItem> {
+    // First check for duplicates
+    const existingItems = await db.query.shoppingItems.findMany({
+      where: and(
+        eq(shoppingItems.name, String(itemData.name)),
+        eq(shoppingItems.quantity, String(itemData.quantity)),
+        eq(shoppingItems.unit, String(itemData.unit)),
+        eq(shoppingItems.category, String(itemData.category))
+      )
+    });
+
+    if (existingItems.length > 0) {
+      // If duplicate exists, update the existing item instead of creating a new one
+      return existingItems[0];
+    }
+
+    // If no duplicate exists, create new item
     const [insertedItem] = await db.insert(shoppingItems).values({
-      name: itemData.name || '',
-      quantity: itemData.quantity || '',
-      unit: itemData.unit || '',
-      category: itemData.category || '',
-      checked: itemData.checked || false
+      name: String(itemData.name || ''),
+      quantity: String(itemData.quantity || ''),
+      unit: String(itemData.unit || ''),
+      category: String(itemData.category || ''),
+      checked: itemData.checked ? 1 : 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     }).returning();
 
     return insertedItem;
@@ -1027,8 +1100,8 @@ export const storage = {
   
   async clearShoppingList(): Promise<void> {
     try {
-      // Use SQL for a simple delete all operation
-      await db.execute(sql`DELETE FROM ${shoppingItems}`);
+      // Use delete instead of execute
+      await db.delete(shoppingItems);
     } catch (error) {
       console.error("Error in clearShoppingList:", error);
       throw error;
@@ -1042,12 +1115,21 @@ export const storage = {
       throw new Error("Recipe not found");
     }
     
+    if (!recipe.ingredients || recipe.ingredients.length === 0) {
+      throw new Error("Recipe has no ingredients");
+    }
+    
     // Add each ingredient to the shopping list
     for (const ingredient of recipe.ingredients) {
+      if (!ingredient.name || !ingredient.quantity) {
+        console.warn(`Skipping invalid ingredient in recipe ${recipeId}:`, ingredient);
+        continue;
+      }
+      
       await this.createShoppingItem({
         name: ingredient.name,
         quantity: ingredient.quantity,
-        unit: ingredient.unit,
+        unit: ingredient.unit || "unit",
         category: this.categorizeIngredient(ingredient.name)
       });
     }
@@ -1076,5 +1158,99 @@ export const storage = {
     
     // Default category
     return "Other";
+  },
+
+  async createInventoryItemFromBarcode(barcode: string): Promise<InventoryItem | null> {
+    try {
+      // Get product info from Open Food Facts API
+      const response = await axios.get(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
+      const productInfo = response.data.product;
+
+      if (!productInfo) {
+        return null;
+      }
+
+      const newItem: Partial<InventoryItem> = {
+        name: productInfo.product_name || '',
+        quantity: '1',
+        unit: 'unit',
+        count: 1,
+        barcode: barcode,
+        location: 'Pantry',
+        category: 'Other',
+        image_url: productInfo.image_url || null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      // Check if item with barcode already exists
+      const existingItems = await db.select().from(inventoryItems).where(eq(inventoryItems.barcode, barcode));
+      if (existingItems.length > 0) {
+        return existingItems[0];
+      }
+
+      const [insertedItem] = await db.insert(inventoryItems).values(newItem).returning();
+      return insertedItem;
+    } catch (error) {
+      console.error('Error creating inventory item from barcode:', error);
+      return null;
+    }
+  },
+
+  async removeDuplicates(): Promise<void> {
+    try {
+      // Remove duplicate shopping items
+      const shoppingItems = await db.query.shoppingItems.findMany();
+      const uniqueShoppingItems = new Map();
+      shoppingItems.forEach(item => {
+        const key = `${item.name}-${item.quantity}-${item.unit}-${item.category}`;
+        if (!uniqueShoppingItems.has(key)) {
+          uniqueShoppingItems.set(key, item);
+        }
+      });
+      
+      // Clear and reinsert unique items
+      await db.delete(shoppingItems);
+      for (const item of uniqueShoppingItems.values()) {
+        await db.insert(shoppingItems).values(item);
+      }
+
+      // Remove duplicate inventory items
+      const inventoryItems = await db.query.inventoryItems.findMany();
+      const uniqueInventoryItems = new Map();
+      inventoryItems.forEach(item => {
+        const key = `${item.name}-${item.quantity}-${item.unit}-${item.category}-${item.barcode}`;
+        if (!uniqueInventoryItems.has(key)) {
+          uniqueInventoryItems.set(key, item);
+        }
+      });
+      
+      // Clear and reinsert unique items
+      await db.delete(inventoryItems);
+      for (const item of uniqueInventoryItems.values()) {
+        await db.insert(inventoryItems).values(item);
+      }
+
+      // Remove duplicate recipes
+      const recipes = await db.query.recipes.findMany();
+      const uniqueRecipes = new Map();
+      recipes.forEach(recipe => {
+        const key = `${recipe.title}-${recipe.url}`;
+        if (!uniqueRecipes.has(key)) {
+          uniqueRecipes.set(key, recipe);
+        }
+      });
+      
+      // Clear and reinsert unique recipes
+      await db.delete(recipes);
+      for (const recipe of uniqueRecipes.values()) {
+        await db.insert(recipes).values(recipe);
+      }
+
+      console.log("Successfully removed duplicates from all tables");
+    } catch (error) {
+      console.error("Error removing duplicates:", error);
+      throw error;
+    }
   }
 };

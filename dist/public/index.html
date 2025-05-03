@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <title>Grocery Manager</title>
+    <script>
+      declare global {
+        interface Window {
+          $replit?: {
+            user?: {
+              id: string;
+              username: string;
+              bio: string;
+              url: string;
+              profileImage: string;
+              roles: string[];
+            };
+          };
+        }
+      }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+Pro:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Web App Manifest for PWA support -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="Grocery Manager">
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
+    <script type="module" crossorigin src="/assets/index-C6bFBYjn.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CNiUJwmp.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- This script injects a replit badge into the page, please feel free to remove this line -->
+    <script type="text/javascript" src="https://replit.com/public/js/replit-badge-v3.js"></script>
+  </body>
+</html>
