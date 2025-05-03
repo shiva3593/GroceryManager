@@ -265,9 +265,9 @@ export default function Inventory() {
       barcode: item.barcode || "",
       quantity: item.quantity,
       unit: item.unit,
-      count: item.count,
-      category: item.category,
-      location: item.location,
+      count: item.count ?? undefined,
+      category: item.category ?? undefined,
+      location: item.location ?? undefined,
       expiry_date: formattedExpiryDate
     });
     

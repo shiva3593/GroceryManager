@@ -390,7 +390,7 @@ export const storage = {
         ingredients: true
       }
     });
-    return recipe;
+    return recipe || null;
   },
 
   async createRecipe(recipeData: Partial<Recipe>): Promise<Recipe> {
@@ -466,8 +466,8 @@ export const storage = {
         instructions: recipeData.instructions ? JSON.stringify(recipeData.instructions) : undefined,
         nutrition: recipeData.nutrition ? JSON.stringify(recipeData.nutrition) : undefined,
         comments: recipeData.comments ? JSON.stringify(recipeData.comments) : undefined,
-        is_favorite: recipeData.is_favorite ? 1 : 0,
-        updated_at: new Date().toISOString()
+        is_favorite: recipeData.is_favorite ? true : false,
+        updated_at: new Date()
       })
       .where(eq(recipes.id, id));
 
@@ -484,7 +484,7 @@ export const storage = {
           name: ingredient.name,
           quantity: ingredient.quantity,
           unit: ingredient.unit,
-          created_at: new Date().toISOString()
+          created_at: new Date()
         }))
       );
     }
@@ -947,9 +947,10 @@ export const storage = {
   },
 
   async getInventoryItemById(id: number): Promise<InventoryItem | null> {
-    return db.query.inventoryItems.findFirst({
+    const item = await db.query.inventoryItems.findFirst({
       where: eq(inventoryItems.id, id)
     });
+    return item || null;
   },
 
   async getInventoryItemsByCategory(category: string): Promise<InventoryItem[]> {
@@ -968,7 +969,7 @@ export const storage = {
         category: true
       }
     });
-    const categories = Array.from(new Set(items.map((item: { category: string }) => item.category))) as string[];
+    const categories = Array.from(new Set(items.map(item => item.category || '').filter(Boolean)));
     return categories;
   },
 
@@ -1071,14 +1072,15 @@ export const storage = {
   },
 
   async getShoppingItemById(id: number): Promise<ShoppingItem | null> {
-    return db.query.shoppingItems.findFirst({
+    const item = await db.query.shoppingItems.findFirst({
       where: eq(shoppingItems.id, id)
     });
+    return item || null;
   },
 
   async getShoppingItemsByCategory(): Promise<ShoppingCategory[]> {
     const items = await db.query.shoppingItems.findMany({
-      orderBy: (items: typeof shoppingItems, { asc }: { asc: (column: any) => any }) => [asc(items.category)]
+      orderBy: (items, { asc }) => asc(items.category)
     });
     
     // Group items by category
@@ -1220,7 +1222,7 @@ export const storage = {
         return null;
       }
 
-      const newItem: Partial<InventoryItem> = {
+      const newItem = {
         name: productInfo.product_name || '',
         quantity: '1',
         unit: 'unit',
@@ -1250,9 +1252,9 @@ export const storage = {
   async removeDuplicates(): Promise<void> {
     try {
       // Remove duplicate shopping items
-      const shoppingItems = await db.query.shoppingItems.findMany();
+      const shoppingItemsList = await db.query.shoppingItems.findMany();
       const uniqueShoppingItems = new Map<string, ShoppingItem>();
-      shoppingItems.forEach((item: ShoppingItem) => {
+      shoppingItemsList.forEach(item => {
         const key = `${item.name}-${item.quantity}-${item.unit}-${item.category}`;
         if (!uniqueShoppingItems.has(key)) {
           uniqueShoppingItems.set(key, item);
@@ -1267,9 +1269,9 @@ export const storage = {
       }
 
       // Remove duplicate inventory items
-      const inventoryItems = await db.query.inventoryItems.findMany();
+      const inventoryItemsList = await db.query.inventoryItems.findMany();
       const uniqueInventoryItems = new Map<string, InventoryItem>();
-      inventoryItems.forEach((item: InventoryItem) => {
+      inventoryItemsList.forEach(item => {
         const key = `${item.name}-${item.quantity}-${item.unit}-${item.category}-${item.barcode}`;
         if (!uniqueInventoryItems.has(key)) {
           uniqueInventoryItems.set(key, item);
@@ -1284,9 +1286,13 @@ export const storage = {
       }
 
       // Remove duplicate recipes
-      const recipes = await db.query.recipes.findMany();
+      const recipesList = await db.query.recipes.findMany({
+        with: {
+          ingredients: true
+        }
+      });
       const uniqueRecipes = new Map<string, Recipe>();
-      recipes.forEach((recipe: Recipe) => {
+      recipesList.forEach(recipe => {
         const key = `${recipe.title}-${recipe.url}`;
         if (!uniqueRecipes.has(key)) {
           uniqueRecipes.set(key, recipe);

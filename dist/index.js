@@ -779,7 +779,7 @@ var storage = {
         ingredients: true
       }
     });
-    return recipe;
+    return recipe || null;
   },
   async createRecipe(recipeData) {
     const ingredients = recipeData.ingredients || [];
@@ -837,8 +837,8 @@ var storage = {
       instructions: recipeData.instructions ? JSON.stringify(recipeData.instructions) : void 0,
       nutrition: recipeData.nutrition ? JSON.stringify(recipeData.nutrition) : void 0,
       comments: recipeData.comments ? JSON.stringify(recipeData.comments) : void 0,
-      is_favorite: recipeData.is_favorite ? 1 : 0,
-      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+      is_favorite: recipeData.is_favorite ? true : false,
+      updated_at: /* @__PURE__ */ new Date()
     }).where(eq(recipes.id, id));
     if (ingredients.length > 0) {
       await db.delete(recipeIngredients).where(eq(recipeIngredients.recipe_id, id));
@@ -848,7 +848,7 @@ var storage = {
           name: ingredient.name,
           quantity: ingredient.quantity,
           unit: ingredient.unit,
-          created_at: (/* @__PURE__ */ new Date()).toISOString()
+          created_at: /* @__PURE__ */ new Date()
         }))
       );
     }
@@ -1149,9 +1149,10 @@ var storage = {
     });
   },
   async getInventoryItemById(id) {
-    return db.query.inventoryItems.findFirst({
+    const item = await db.query.inventoryItems.findFirst({
       where: eq(inventoryItems.id, id)
     });
+    return item || null;
   },
   async getInventoryItemsByCategory(category) {
     if (category === "all") {
@@ -1168,7 +1169,7 @@ var storage = {
         category: true
       }
     });
-    const categories = Array.from(new Set(items.map((item) => item.category)));
+    const categories = Array.from(new Set(items.map((item) => item.category || "").filter(Boolean)));
     return categories;
   },
   async getItemByBarcode(barcode) {
@@ -1246,13 +1247,14 @@ var storage = {
     });
   },
   async getShoppingItemById(id) {
-    return db.query.shoppingItems.findFirst({
+    const item = await db.query.shoppingItems.findFirst({
       where: eq(shoppingItems.id, id)
     });
+    return item || null;
   },
   async getShoppingItemsByCategory() {
     const items = await db.query.shoppingItems.findMany({
-      orderBy: (items2, { asc }) => [asc(items2.category)]
+      orderBy: (items2, { asc }) => asc(items2.category)
     });
     const categorizedItems = {};
     items.forEach((item) => {
@@ -1379,44 +1381,48 @@ var storage = {
   },
   async removeDuplicates() {
     try {
-      const shoppingItems2 = await db.query.shoppingItems.findMany();
+      const shoppingItemsList = await db.query.shoppingItems.findMany();
       const uniqueShoppingItems = /* @__PURE__ */ new Map();
-      shoppingItems2.forEach((item) => {
+      shoppingItemsList.forEach((item) => {
         const key = `${item.name}-${item.quantity}-${item.unit}-${item.category}`;
         if (!uniqueShoppingItems.has(key)) {
           uniqueShoppingItems.set(key, item);
         }
       });
-      await db.delete(shoppingItems2);
+      await db.delete(shoppingItems);
       const uniqueShoppingArray = Array.from(uniqueShoppingItems.values());
       for (const item of uniqueShoppingArray) {
-        await db.insert(shoppingItems2).values(item);
+        await db.insert(shoppingItems).values(item);
       }
-      const inventoryItems2 = await db.query.inventoryItems.findMany();
+      const inventoryItemsList = await db.query.inventoryItems.findMany();
       const uniqueInventoryItems = /* @__PURE__ */ new Map();
-      inventoryItems2.forEach((item) => {
+      inventoryItemsList.forEach((item) => {
         const key = `${item.name}-${item.quantity}-${item.unit}-${item.category}-${item.barcode}`;
         if (!uniqueInventoryItems.has(key)) {
           uniqueInventoryItems.set(key, item);
         }
       });
-      await db.delete(inventoryItems2);
+      await db.delete(inventoryItems);
       const uniqueInventoryArray = Array.from(uniqueInventoryItems.values());
       for (const item of uniqueInventoryArray) {
-        await db.insert(inventoryItems2).values(item);
+        await db.insert(inventoryItems).values(item);
       }
-      const recipes2 = await db.query.recipes.findMany();
+      const recipesList = await db.query.recipes.findMany({
+        with: {
+          ingredients: true
+        }
+      });
       const uniqueRecipes = /* @__PURE__ */ new Map();
-      recipes2.forEach((recipe) => {
+      recipesList.forEach((recipe) => {
         const key = `${recipe.title}-${recipe.url}`;
         if (!uniqueRecipes.has(key)) {
           uniqueRecipes.set(key, recipe);
         }
       });
-      await db.delete(recipes2);
+      await db.delete(recipes);
       const uniqueRecipesArray = Array.from(uniqueRecipes.values());
       for (const recipe of uniqueRecipesArray) {
-        await db.insert(recipes2).values(recipe);
+        await db.insert(recipes).values(recipe);
       }
       console.log("Successfully removed duplicates from all tables");
     } catch (error) {
@@ -1440,7 +1446,9 @@ function getLocalIP() {
   const nets = networkInterfaces();
   const results = {};
   for (const name of Object.keys(nets)) {
-    for (const net of nets[name]) {
+    const interfaces = nets[name];
+    if (!interfaces) continue;
+    for (const net of interfaces) {
       if (net.family === "IPv4" && !net.internal) {
         if (!results[name]) {
           results[name] = [];
@@ -1817,7 +1825,7 @@ async function registerRoutes(app2) {
           quantity: existingItem.quantity,
           unit: existingItem.unit,
           count: existingItem.count,
-          expiryDate: existingItem.expiryDate,
+          expiry_date: existingItem.expiry_date,
           category: existingItem.category,
           location: existingItem.location
         });

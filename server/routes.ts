@@ -13,11 +13,13 @@ import { lookupBarcodeInfo } from './barcode-utils';
 // Function to get the server's local network IP address
 function getLocalIP() {
   const nets = networkInterfaces();
-  const results = {};
+  const results: Record<string, string[]> = {};
 
   // Find all network interfaces that aren't internal and have IPv4 addresses
   for (const name of Object.keys(nets)) {
-    for (const net of nets[name]) {
+    const interfaces = nets[name];
+    if (!interfaces) continue;
+    for (const net of interfaces) {
       // Skip over non-IPv4 and internal (i.e. 127.0.0.1) addresses
       if (net.family === 'IPv4' && !net.internal) {
         if (!results[name]) {
@@ -473,7 +475,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           quantity: existingItem.quantity,
           unit: existingItem.unit,
           count: existingItem.count,
-          expiryDate: existingItem.expiryDate,
+          expiry_date: existingItem.expiry_date,
           category: existingItem.category,
           location: existingItem.location
         });

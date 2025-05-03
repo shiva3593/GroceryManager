@@ -182,8 +182,8 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
   };
 
   // Parse JSON fields
-  const parsedInstructions = recipe.instructions ? JSON.parse(recipe.instructions) : [];
-  const parsedNutrition = recipe.nutrition ? JSON.parse(recipe.nutrition) : { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  const parsedInstructions = typeof recipe.instructions === 'string' ? JSON.parse(recipe.instructions) : recipe.instructions || [];
+  const parsedNutrition = typeof recipe.nutrition === 'string' ? JSON.parse(recipe.nutrition) : recipe.nutrition || { calories: 0, protein: 0, carbs: 0, fat: 0 };
   // Convert string rating to number for star display
   const ratingNum = typeof recipe.rating === 'string' ? parseFloat(recipe.rating) : Number(recipe.rating) || 0;
 
@@ -200,7 +200,7 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
 
           <div className="overflow-y-auto">
             <div className="h-48 sm:h-56 bg-slate-100 relative">
-              <img src={recipe.image_url} alt={recipe.title} className="w-full h-full object-cover" />
+              <img src={recipe.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c'} alt={recipe.title} className="w-full h-full object-cover" />
               <div className="absolute top-2 right-2 flex space-x-2">
                 <button className="p-2 bg-white/90 rounded-full text-slate-700 hover:bg-white">
                   <i className="fas fa-pencil-alt"></i>
@@ -444,7 +444,7 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
               <div className="mb-6">
                 <h2 className="text-lg font-semibold mb-3">Comments</h2>
                 <div className="space-y-4">
-                  {recipe.comments ? JSON.parse(recipe.comments).map((comment: string, index: number) => (
+                  {recipe.comments ? (typeof recipe.comments === 'string' ? JSON.parse(recipe.comments) : recipe.comments).map((comment: string, index: number) => (
                     <div key={index} className="bg-slate-50 p-4 rounded-lg">
                       <p className="text-slate-700">{comment}</p>
                     </div>
