@@ -1,0 +1,125 @@
+
+{
+  "project_name": "Grocery Manager",
+  "description": "A full-stack Grocery Manager application that streamlines meal planning, shopping, and recipe management through intelligent tools and user-friendly interfaces.",
+  "stack": {
+    "frontend": "React + TypeScript",
+    "backend": "Express.js",
+    "database": "PostgreSQL",
+    "styling": "Tailwind CSS + Shadcn UI",
+    "key_libraries": ["Drizzle ORM", "Cheerio", "Axios", "TanStack Query", "Wouter", "Lucide React"]
+  },
+  "core_features": {
+    "authentication": {
+      "description": "JWT-based authentication system with login/register capabilities",
+      "components": ["auth.tsx"],
+      "API_endpoints": ["/api/auth/login", "/api/auth/register"]
+    },
+    "inventory_management": {
+      "description": "Track and manage food inventory with barcode scanning",
+      "components": ["BarcodeScanner.tsx", "InventoryItem.tsx"],
+      "API_endpoints": ["/api/inventory", "/api/inventory/barcode/:code"]
+    },
+    "recipe_management": {
+      "description": "Store, search, and manage recipes with intelligent import",
+      "components": ["RecipeCard.tsx", "RecipeDetail.tsx"],
+      "API_endpoints": ["/api/recipes", "/api/recipes/import", "/api/recipes/:id/favorite"]
+    },
+    "shopping_list": {
+      "description": "Create and manage shopping lists, synced with inventory",
+      "components": ["ShoppingListItem.tsx"],
+      "API_endpoints": ["/api/shopping-list", "/api/shopping-list/categories"]
+    },
+    "smart_comparison": {
+      "description": "Compare recipes by ingredients, nutritional data, and cost",
+      "components": ["Compare.tsx"],
+      "API_endpoints": ["/api/recipes/compare"]
+    },
+    "mobile_optimization": {
+      "description": "Mobile-first design with bottom navigation",
+      "components": ["BottomNavigation.tsx", "use-mobile.tsx"]
+    }
+  },
+  "recent_developments": {
+    "enhanced_recipe_import": {
+      "description": "Improved recipe scraping intelligence",
+      "changes": [
+        "Added handling for Unicode fractions (½, ¼, etc.) and text fractions (1/2, 1/4)",
+        "Expanded detection of food description modifiers like 'boneless', 'skinless', etc.",
+        "Improved filtering of nutrition data and non-ingredient content",
+        "Added support for serving suggestions like 'cooked rice, for serving'",
+        "Enhanced Tasty.co scraping with site-specific selectors",
+        "Added fallback to structured JSON data for better ingredient extraction",
+        "Added special handling for preparation methods after commas (e.g., 'chicken breasts, sliced')",
+        "Improved detection of citrus fruits with zesting or juicing instructions",
+        "Added smart merging of HTML-scraped and JSON-extracted ingredients",
+        "Enhanced detection of key recipe ingredients to ensure completeness"
+      ],
+      "key_files": ["server/storage.ts"]
+    },
+    "recipe_editing": {
+      "description": "Added the ability to edit recipe ingredients",
+      "status": "Completed",
+      "changes": [
+        "Implemented in-place ingredient editing UI",
+        "Added form validation for ingredient entry",
+        "Created optimistic UI updates with proper state management",
+        "Added API support for saving modified ingredient lists",
+        "Implemented cancel and save functionality with error handling",
+        "Added visual indicators for the editing process"
+      ],
+      "components": ["RecipeDetail.tsx"],
+      "API_endpoints": ["/api/recipes/:id"]
+    },
+    "authentication_system": {
+      "description": "Implemented JWT-based authentication",
+      "status": "Completed",
+      "changes": [
+        "Added JWT token generation and validation",
+        "Implemented protected routes in frontend",
+        "Added auth middleware for API protection",
+        "Implemented token refresh mechanism",
+        "Added persistent login with local storage"
+      ],
+      "components": ["auth.tsx"],
+      "API_endpoints": ["/api/auth/login", "/api/auth/register"]
+    }
+  },
+  "design_choices": {
+    "mobile_first": "Designed primarily for mobile use with bottom navigation",
+    "pwa_support": "Progressive Web App with iOS support",
+    "color_scheme": "Using Tailwind with custom gradients for emphasis",
+    "ui_components": "Utilizing Shadcn UI for consistent design language",
+    "state_management": "React Query for server state, React Context for local state",
+    "error_handling": "Toast notifications for user feedback, proper error boundaries"
+  },
+  "development_roadmap": {
+    "current_focus": "Improving recipe import intelligence and ingredient editing",
+    "next_steps": [
+      "Implement recipe rating system",
+      "Add nutritional analysis for recipes",
+      "Enhance inventory expiry tracking",
+      "Develop meal planning calendar",
+      "Add recipe categorization and tagging",
+      "Implement shopping list optimization",
+      "Add multi-language support"
+    ]
+  },
+  "technical_infrastructure": {
+    "database": {
+      "orm": "Drizzle ORM with PostgreSQL",
+      "migrations": "Automated schema migrations",
+      "seeding": "Development data seeding support"
+    },
+    "api": {
+      "architecture": "RESTful with Express.js",
+      "authentication": "JWT-based with refresh tokens",
+      "rate_limiting": "Express rate limiter for API protection"
+    },
+    "frontend": {
+      "routing": "Wouter for lightweight client-side routing",
+      "state": "TanStack Query for server state management",
+      "ui": "Shadcn UI components with Tailwind CSS"
+    }
+  }
+}

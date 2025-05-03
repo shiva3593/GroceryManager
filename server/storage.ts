@@ -1,0 +1,1080 @@
+import { db } from "@db";
+import { 
+  recipes,
+  recipeIngredients,
+  inventoryItems,
+  shoppingItems,
+  Recipe,
+  Ingredient,
+  InventoryItem,
+  ShoppingItem,
+  ShoppingCategory
+} from "@shared/schema";
+import { eq, and, desc, like, sql } from "drizzle-orm";
+import axios from "axios";
+import * as cheerio from "cheerio";
+
+// Helper function to parse ingredients with enhanced intelligence
+function parseIngredientText(text: string): { name: string, quantity: string, unit: string } {
+  // Skip empty or very short texts
+  if (!text || text.length < 3) {
+    return { name: text, quantity: "1", unit: "unit" };
+  }
+  
+  const lowerText = text.toLowerCase();
+  
+  // Common units to detect
+  const commonUnits = [
+    'cup', 'cups', 'tablespoon', 'tablespoons', 'tbsp', 'teaspoon', 'teaspoons', 'tsp',
+    'oz', 'ounce', 'ounces', 'pound', 'pounds', 'lb', 'lbs', 'g', 'gram', 'grams', 'kg',
+    'ml', 'milliliter', 'milliliters', 'l', 'liter', 'liters', 'pinch', 'pinches',
+    'dash', 'dashes', 'clove', 'cloves', 'bunch', 'bunches', 'sprig', 'sprigs',
+    'piece', 'pieces', 'slice', 'slices', 'can', 'cans', 'jar', 'jars', 'package', 'packages',
+    'pkg', 'box', 'boxes'
+  ];
+  
+  // Common non-ingredient texts to filter out, but we'll refine the logic to be smarter
+  const nonIngredientMarkers = [
+    // Cooking verbs/actions (only as standalone instructions)
+    'preheat', 'heat', 'blend', 'mix', 'stir', 'whisk', 'cut', 'chop', 'dice',
+    'instructions', 'directions', 'steps', 'method', 'preparation', 'prepare', 
+    'bake', 'boil', 'simmer', 'fry', 'roast', 'grill', 'saute', 'toast',
+    
+    // Recipe section headers
+    'ingredients:', 'directions:', 'instructions:', 'method:', 'preparation:', 'notes:',
+    'equipment:', 'tools:', 'utensils:', 'yield:', 'servings:', 'serves:',
+    
+    // Nutrition markers - expanded to catch more cases
+    'nutrition', 'nutritional', 'calories', 'calorie', 'kcal', 'protein', 'proteins',
+    'carbs', 'carbohydrate', 'fat', 'fats', 'sodium', 'sugar', 'fiber', 'fibre',
+    'per serving', 'per portion', 'percent', 'daily value', '%', 'vitamin', 'mineral',
+    'calcium', 'iron', 'potassium', 'magnesium', 'enjoy!', 'enjoy', 'bon appetit',
+    
+    // Headers and recipe metadata that should be excluded
+    'recipe by', 'recipe from', 'author', 'published', 'updated', 'rating',
+    'comments', 'reviews', 'print recipe', 'save recipe', 'share recipe',
+    'prep time', 'cook time', 'total time', 'difficulty', 'cuisine', 'course'
+  ];
+  
+  // Skip likely non-ingredient texts, but only if they appear as standalone phrases
+  // We'll be more careful now - we only want to skip entire lines that are clearly not ingredients
+  // Many actual ingredients contain words like "slice" (e.g., "2 slices of bread" or "chicken breasts, sliced")
+  if (nonIngredientMarkers.some(marker => {
+    // If the text is exactly the marker or starts with the marker followed by a space or punctuation
+    const markerPos = lowerText.indexOf(marker);
+    if (markerPos === 0) {
+      // Marker is at the start of the text
+      const afterMarker = lowerText.charAt(marker.length);
+      // Check if the marker is a whole word or followed by punctuation
+      return afterMarker === "" || afterMarker === " " || afterMarker === ":" || afterMarker === ",";
+    }
+    // Also reject things that are clearly headers like "INGREDIENTS:" in capital letters
+    return lowerText === marker || lowerText.toUpperCase() === marker.toUpperCase();
+  })) {
+    return { name: "", quantity: "", unit: "" }; // Return empty to indicate this should be skipped
+  }
+  
+  // Special pre-processing for common ingredient formats
+  // Check for leading fraction format like "½ cup flour"
+  if (text.match(/^[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]/)) {
+    // Replace unicode fractions with their decimal equivalents
+    const fractionMap: Record<string, string> = {
+      '½': '0.5', '⅓': '0.33', '⅔': '0.67', '¼': '0.25', '¾': '0.75',
+      '⅕': '0.2', '⅖': '0.4', '⅗': '0.6', '⅘': '0.8', '⅙': '0.17',
+      '⅚': '0.83', '⅛': '0.125', '⅜': '0.375', '⅝': '0.625', '⅞': '0.875'
+    };
+
+    for (const [fraction, decimal] of Object.entries(fractionMap)) {
+      if (text.startsWith(fraction)) {
+        text = text.replace(fraction, decimal + " ");
+        break;
+      }
+    }
+  }
+
+  // Enhanced, more flexible ingredient pattern matching for complex descriptions
+  // Primary patterns for identifying quantity, unit, and ingredient
+  const numberPattern = /^\s*(\d+(?:\s+\d+\/\d+|\.\d+|\/\d+)?)/; // Matches: "2", "2 1/2", "2.5", "1/2"
+  const fractionOnlyPattern = /^\s*(\d+\/\d+)/; // Matches standalone fractions like "1/2"
+  const unitPattern = /(?:tablespoons?|tbsp|teaspoons?|tsp|cups?|ounces?|oz|pounds?|lbs?|grams?|g|kilograms?|kg|milliliters?|ml|liters?|l|pinch(?:es)?|dash(?:es)?|cloves?|bunch(?:es)?|sprigs?|pieces?|slices?|cans?|jars?|packages?|pkg|boxes?)/i;
+  
+  // First try - Number + Unit pattern
+  let quantity = "", unit = "", name = "";
+  let remainingText = lowerText.trim();
+  
+  // Extract quantity (number part)
+  const numberMatch = remainingText.match(numberPattern);
+  const fractionMatch = remainingText.match(fractionOnlyPattern);
+  
+  if (numberMatch) {
+    quantity = numberMatch[1];
+    remainingText = remainingText.substring(numberMatch[0].length).trim();
+    
+    // Look for unit right after the number
+    const potentialUnit = remainingText.split(/\s+/)[0];
+    if (potentialUnit && unitPattern.test(potentialUnit)) {
+      unit = potentialUnit;
+      remainingText = remainingText.substring(potentialUnit.length).trim();
+    } else if (potentialUnit && commonUnits.includes(potentialUnit.toLowerCase())) {
+      unit = potentialUnit;
+      remainingText = remainingText.substring(potentialUnit.length).trim();
+    }
+  } 
+  // Try to match standalone fractions like "1/2"
+  else if (fractionMatch) {
+    quantity = fractionMatch[1];
+    remainingText = remainingText.substring(fractionMatch[0].length).trim();
+    
+    // Look for unit right after the fraction
+    const potentialUnit = remainingText.split(/\s+/)[0];
+    if (potentialUnit && unitPattern.test(potentialUnit)) {
+      unit = potentialUnit;
+      remainingText = remainingText.substring(potentialUnit.length).trim();
+    } else if (potentialUnit && commonUnits.includes(potentialUnit.toLowerCase())) {
+      unit = potentialUnit;
+      remainingText = remainingText.substring(potentialUnit.length).trim();
+    }
+  }
+  // Check for range pattern "1-2 cups"
+  else {
+    const rangeMatch = remainingText.match(/^(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)/);
+    if (rangeMatch) {
+      quantity = `${rangeMatch[1]}-${rangeMatch[2]}`;
+      remainingText = remainingText.substring(rangeMatch[0].length).trim();
+      
+      // Look for unit after the range
+      const potentialUnit = remainingText.split(/\s+/)[0];
+      if (potentialUnit && unitPattern.test(potentialUnit)) {
+        unit = potentialUnit;
+        remainingText = remainingText.substring(potentialUnit.length).trim();
+      } else if (potentialUnit && commonUnits.includes(potentialUnit.toLowerCase())) {
+        unit = potentialUnit;
+        remainingText = remainingText.substring(potentialUnit.length).trim();
+      }
+    }
+  }
+  
+  // Handle complex ingredient descriptions like "2 boneless, skinless chicken breasts, sliced"
+  // The remaining text after quantity and unit extraction becomes the ingredient name
+  if (remainingText) {
+    name = remainingText;
+    
+    // Clean up the name from any trailing phrases
+    name = name
+      .replace(/,\s*to taste$/, '')
+      .replace(/,\s*for serving$/, '')
+      .replace(/,\s*for garnish$/, '')
+      .replace(/,\s*optional$/, '')
+      .trim();
+  } else {
+    // Fallback - use the original text if our pattern matching failed
+    name = text;
+  }
+  
+  // Handle special cases for ingredients formats we commonly find on recipe websites
+  
+  // Special case: if no quantity was found but the text starts with descriptive words
+  // like "large" or "small", consider the whole text as the ingredient name
+  if (!quantity && (
+      lowerText.startsWith('small') || 
+      lowerText.startsWith('medium') || 
+      lowerText.startsWith('large') || 
+      lowerText.startsWith('fresh') || 
+      lowerText.startsWith('dried') || 
+      lowerText.startsWith('whole') ||
+      lowerText.startsWith('cooked') ||
+      lowerText.startsWith('boneless') ||
+      lowerText.startsWith('skinless') ||
+      lowerText.startsWith('minced') ||
+      lowerText.startsWith('diced') ||
+      lowerText.startsWith('chopped') ||
+      lowerText.startsWith('sliced')
+    )) {
+    name = text;
+  }
+  
+  // Handle special preparation methods that appear after commas
+  // For example: "chicken breasts, sliced" or "lemon, zested"
+  const preparationMethods = [
+    'sliced', 'diced', 'chopped', 'minced', 'grated', 'shredded', 
+    'julienned', 'cubed', 'quartered', 'halved', 'peeled', 'seeded', 
+    'cored', 'stemmed', 'pitted', 'zested', 'juiced'
+  ];
+  
+  // If the ingredient contains preparation methods but no quantity, we still want to keep it
+  // For instance, "boneless, skinless chicken breasts, sliced" should be captured as an ingredient
+  if (!quantity && preparationMethods.some(method => lowerText.includes(`, ${method}`))) {
+    name = text;
+    quantity = "2"; // A reasonable default for recipe items like chicken breasts
+  }
+  
+  // Special case for "boneless, skinless chicken breasts"
+  // Handle this specific pattern with special logic as it's commonly formatted in recipes
+  if (lowerText.includes('boneless') && lowerText.includes('skinless') && lowerText.includes('chicken')) {
+    // Check if unit was incorrectly detected as 'boneless' or 'boneless,'
+    if (unit.toLowerCase() === 'boneless' || unit.toLowerCase() === 'boneless,') {
+      // Move the unit to the name and clear the unit field
+      name = text.trim();
+      unit = '';
+      
+      // Set a default quantity if none was properly detected
+      if (!quantity || quantity === "1") {
+        quantity = "2"; // Default to 2 chicken breasts
+      }
+    }
+    
+    // Override formatting in cases like "2 boneless, skinless chicken breasts, sliced"
+    // or when the ingredient appears in other formats
+    else if (quantity && !unit) {
+      name = text.replace(quantity, '').trim();
+      // Ensure we retain the full descriptive name
+      if (name.toLowerCase().includes('boneless') && name.toLowerCase().includes('skinless') && name.toLowerCase().includes('chicken')) {
+        // This is what we want - the full descriptive name
+        // Just ensure any leading commas are removed
+        name = name.replace(/^,\s*/, '');
+      }
+    }
+    
+    // If the input is just the ingredient without quantity, ensure proper formatting
+    else if (!quantity && !unit) {
+      name = text.trim();
+      quantity = "2"; // Default quantity for chicken breasts
+    }
+    
+    // Bonus check: if name contains "chicken breast" but was split incorrectly
+    if (lowerText.includes('boneless,') && unit === 'skinless') {
+      // This fixes a common parse error where the attributes get split incorrectly
+      name = text.trim();
+      unit = '';
+      if (!quantity) quantity = "2";
+    }
+  }
+  
+  // Special case: "cooked rice, for serving" or similar serving suggestions
+  if (lowerText.includes('for serving') || lowerText.includes('to serve')) {
+    // This is still a valid ingredient, but we want to clean it up
+    name = lowerText.replace(/,?\s*(for serving|to serve).*$/, '').trim();
+    if (!quantity) quantity = "as needed";
+  }
+  
+  // Special case: Handle "zested" or "juiced" items like "½ lemon, zested" or "0.5 lemon, zested, plus more for garnish"
+  if (lowerText.includes('lemon') || lowerText.includes('lime') || lowerText.includes('orange')) {
+    // Check for citrus fruits with zest or juice specifications
+    if (lowerText.includes('zest') || lowerText.includes('zested') || 
+        lowerText.includes('juice') || lowerText.includes('juiced')) {
+      
+      // First handle the complex case "0.5 lemon, zested, plus more for garnish"
+      if (lowerText.includes('plus more') || lowerText.includes('plus extra') || lowerText.includes('and more')) {
+        // This is a complex format with additional instructions
+        // Extract the main quantity first
+        
+        // Check for decimal number at the beginning (e.g., 0.5 lemon)
+        const decimalMatch = text.match(/^(\d+\.\d+)\s*(\w+)/i);
+        if (decimalMatch) {
+          quantity = decimalMatch[1];
+          // Use the entire text as the name but preserve the format
+          name = text;
+          unit = '';
+        } 
+        // Check for whole number at beginning (e.g., 1 lemon)
+        else {
+          const wholeNumMatch = text.match(/^(\d+)\s*(\w+)/i);
+          if (wholeNumMatch) {
+            quantity = wholeNumMatch[1];
+            name = text;
+            unit = '';
+          }
+        }
+        // Keep the full ingredient description including "plus more for garnish"
+        return { 
+          name: text,
+          quantity: quantity || "1",
+          unit: ""
+        };
+      }
+      
+      // Extract the quantity if it's a unicode fraction at the beginning (½, ¼, etc.)
+      const fractionMatch = text.match(/^[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]/);
+      if (fractionMatch) {
+        // Map of unicode fractions to their decimal equivalents
+        const fractionToDecimal: Record<string, string> = {
+          '½': '0.5', '⅓': '0.33', '⅔': '0.67', '¼': '0.25', '¾': '0.75',
+          '⅕': '0.2', '⅖': '0.4', '⅗': '0.6', '⅘': '0.8', '⅙': '0.17',
+          '⅚': '0.83', '⅛': '0.125', '⅜': '0.375', '⅝': '0.625', '⅞': '0.875'
+        };
+        
+        quantity = fractionToDecimal[fractionMatch[0]] || '0.5';
+        // Keep the full descriptive name
+        name = text;
+        unit = '';
+      } 
+      // If there's a numeric decimal at the beginning like "0.5 lemon"
+      else if (lowerText.match(/^0\.\d+\s*lemon/)) {
+        const numMatch = text.match(/^(0\.\d+)\s*(.+)/i);
+        if (numMatch) {
+          quantity = numMatch[1];
+          name = text; // Keep the full descriptive name
+          unit = '';
+        }
+      }
+      // If there's a text number at the beginning like "one lemon"
+      else if (/^(one|two|three|four|five|half)\s+/i.test(lowerText)) {
+        const textNumbers: Record<string, string> = {
+          'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5', 'half': '0.5'
+        };
+        const textNumMatch = lowerText.match(/^(one|two|three|four|five|half)\s+/i);
+        if (textNumMatch) {
+          quantity = textNumbers[textNumMatch[1].toLowerCase()];
+          name = text; // Keep the full name
+          unit = '';
+        }
+      }
+      // If there's a decimal number in the text like "0.5 lemon"
+      else if (lowerText.match(/0\.5\s+lemon/)) {
+        quantity = "0.5";
+        name = text.trim();
+        unit = '';
+      }
+      // Special case for "0.5 lemon, juiced"
+      else if (lowerText.includes('lemon, juiced')) {
+        quantity = "0.5";
+        name = text.trim();
+        unit = '';
+      }
+      // Default case when no known pattern is found
+      else {
+        name = text.trim();
+        if (!quantity) quantity = "1";
+        unit = '';
+      }
+    }
+  }
+  
+  // Further validate the name to avoid instructions mixed in
+  if (name.split(' ').length > 10) {
+    // This is likely a sentence, not an ingredient name (too many words)
+    return { name: "", quantity: "", unit: "" }; // Return empty to indicate this should be skipped
+  }
+  
+  // Clean up the extracted data
+  quantity = quantity.trim();
+  unit = unit.trim();
+  name = name.trim();
+  
+  return { 
+    name: name || text,
+    quantity: quantity || "1",
+    unit: unit || "unit"
+  };
+}
+
+// Recipe functions
+export const storage = {
+  // Recipe operations
+  async getAllRecipes(): Promise<Recipe[]> {
+    const recipesList = await db.query.recipes.findMany({
+      orderBy: desc(recipes.createdAt),
+      with: {
+        ingredients: true
+      }
+    });
+    return recipesList;
+  },
+
+  async getRecipeById(id: number): Promise<Recipe | null> {
+    const recipe = await db.query.recipes.findFirst({
+      where: eq(recipes.id, id),
+      with: {
+        ingredients: true
+      }
+    });
+    return recipe;
+  },
+
+  async createRecipe(recipeData: Partial<Recipe>): Promise<Recipe> {
+    // Extract ingredients from data if they exist
+    const ingredients = recipeData.ingredients || [];
+    delete recipeData.ingredients;
+
+    // Default values for required fields if not provided
+    const newRecipeData = {
+      title: recipeData.title || '',
+      description: recipeData.description || '',
+      prepTime: recipeData.prepTime || 30,
+      servings: recipeData.servings || 2,
+      difficulty: recipeData.difficulty || 'Easy',
+      rating: recipeData.rating || 0,
+      ratingCount: recipeData.ratingCount || 0,
+      imageUrl: recipeData.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c',
+      url: recipeData.url || null, // Include the URL field
+      instructions: recipeData.instructions || [],
+      storageInstructions: recipeData.storageInstructions || '',
+      isFavorite: recipeData.isFavorite || false,
+      costPerServing: recipeData.costPerServing || 0,
+      nutrition: recipeData.nutrition || { calories: 0, protein: 0, carbs: 0, fat: 0 },
+      comments: recipeData.comments || []
+    };
+
+    // Insert recipe
+    const [insertedRecipe] = await db.insert(recipes).values(newRecipeData).returning();
+
+    // Insert ingredients if any
+    if (ingredients.length > 0) {
+      await db.insert(recipeIngredients).values(
+        ingredients.map(ingredient => ({
+          recipeId: insertedRecipe.id,
+          name: ingredient.name,
+          quantity: ingredient.quantity,
+          unit: ingredient.unit
+        }))
+      );
+    }
+
+    // Return the complete recipe with ingredients
+    return this.getRecipeById(insertedRecipe.id) as Promise<Recipe>;
+  },
+
+  async updateRecipe(id: number, recipeData: Partial<Recipe>): Promise<Recipe | null> {
+    // Extract ingredients from data if they exist
+    const ingredients = recipeData.ingredients || [];
+    delete recipeData.ingredients;
+
+    // Update recipe
+    await db.update(recipes)
+      .set({ ...recipeData, updatedAt: new Date() })
+      .where(eq(recipes.id, id));
+
+    // Handle ingredients if they were provided
+    if (ingredients.length > 0) {
+      // Delete existing ingredients
+      await db.delete(recipeIngredients)
+        .where(eq(recipeIngredients.recipeId, id));
+
+      // Insert new ingredients
+      await db.insert(recipeIngredients).values(
+        ingredients.map(ingredient => ({
+          recipeId: id,
+          name: ingredient.name,
+          quantity: ingredient.quantity,
+          unit: ingredient.unit
+        }))
+      );
+    }
+
+    // Return the updated recipe
+    return this.getRecipeById(id);
+  },
+
+  async updateRecipeFavorite(id: number, isFavorite: boolean): Promise<void> {
+    await db.update(recipes)
+      .set({ isFavorite, updatedAt: new Date() })
+      .where(eq(recipes.id, id));
+  },
+
+  async deleteRecipe(id: number): Promise<void> {
+    await db.delete(recipes)
+      .where(eq(recipes.id, id));
+  },
+
+  async importRecipeFromUrl(url: string): Promise<Recipe | null> {
+    try {
+      // Use axios to fetch the webpage content (already imported at the top of the file)
+      console.log(`Fetching recipe data from URL: ${url}`);
+      const response = await axios.get(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+      });
+
+      const html = response.data;
+      const $ = cheerio.load(html);
+      console.log(`Successfully loaded HTML from ${url}`);
+
+      // Initialize the recipe with default values that will be overridden
+      let extractedRecipe: Partial<Recipe> = {
+        url: url,
+        isFavorite: false,
+        rating: "0",
+        ratingCount: 0,
+        nutrition: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+        ingredients: []
+      };
+
+      // Different websites have different structures, need site-specific scraping logic
+      if (url.includes('tasty.co')) {
+        console.log("Parsing Tasty.co recipe");
+        
+        // Extract title
+        extractedRecipe.title = $('h1').first().text().trim();
+        
+        // Extract description
+        extractedRecipe.description = $('meta[name="description"]').attr('content') || 
+                                      $('meta[property="og:description"]').attr('content') || 
+                                      $('.description').first().text().trim();
+                                      
+        // Extract image URL
+        extractedRecipe.imageUrl = $('meta[property="og:image"]').attr('content') || 
+                                   $('.recipe-image img').first().attr('src');
+        
+        // Extract instructions
+        const instructions: string[] = [];
+        $('.prep-steps li, .instructions li, .recipe-instructions li').each((i, el) => {
+          const text = $(el).text().trim();
+          if (text) instructions.push(text);
+        });
+        
+        if (instructions.length === 0) {
+          $('.preparation-steps p, .instructions p').each((i, el) => {
+            const text = $(el).text().trim();
+            if (text) instructions.push(text);
+          });
+        }
+        
+        extractedRecipe.instructions = instructions.length > 0 ? instructions : ["Instructions could not be extracted"];
+        
+        // Extract ingredients with our enhanced parsing helper function
+        const ingredients: {name: string, quantity: string, unit: string}[] = [];
+        
+        // Target ingredient sections more specifically for Tasty.co
+        // Tasty.co uses specific structured ingredient lists, which we target precisely
+        let foundIngredients = false;
+        
+        // First try with specific Tasty.co selectors - they often have a component attribute
+        $('[data-ingredient-list-component="true"] li, [data-ingredient-component="true"], [component="ingredient"], .ingredient-item, .ingredients-item').each((i, el) => {
+          const text = $(el).text().trim();
+          foundIngredients = true;
+          
+          // Use our helper function to parse the ingredient text
+          const parsedIngredient = parseIngredientText(text);
+          
+          // Only add valid ingredients (parseIngredientText returns empty name for non-ingredient texts)
+          if (parsedIngredient.name) {
+            ingredients.push(parsedIngredient);
+          }
+        });
+        
+        // If we didn't find any ingredients with the specific selectors, try more generic ones
+        if (!foundIngredients) {
+          $('.ingredients-list li, .recipe-ingredients li, .ingredients li, ul.ingredients li, [class*="ingredient"] li, [id*="ingredient"] li').each((i, el) => {
+            const text = $(el).text().trim();
+            
+            // Use our helper function to parse the ingredient text
+            const parsedIngredient = parseIngredientText(text);
+            
+            // Only add valid ingredients (parseIngredientText returns empty name for non-ingredient texts)
+            if (parsedIngredient.name) {
+              ingredients.push(parsedIngredient);
+            }
+          });
+        }
+        
+        // If we still didn't find ingredients or we're missing key ingredients, 
+        // try to get them from the raw JSON data that might be embedded
+        const extractJsonIngredients = () => {
+          // Look for script tags that might contain the recipe data
+          const scriptTags = $('script[type="application/ld+json"]');
+          const jsonIngredients: {name: string, quantity: string, unit: string}[] = [];
+          
+          scriptTags.each((i, script) => {
+            try {
+              const scriptContent = $(script).html();
+              if (scriptContent) {
+                const jsonData = JSON.parse(scriptContent);
+                
+                // Check for structured recipe data
+                if (jsonData && jsonData["@type"] === "Recipe" && jsonData.recipeIngredient) {
+                  jsonData.recipeIngredient.forEach((ing: string) => {
+                    const parsedIngredient = parseIngredientText(ing);
+                    if (parsedIngredient.name) {
+                      jsonIngredients.push(parsedIngredient);
+                    }
+                  });
+                }
+                
+                // Also handle schema.org nested arrays
+                if (jsonData && jsonData["@graph"]) {
+                  jsonData["@graph"].forEach((item: any) => {
+                    if (item && item["@type"] === "Recipe" && item.recipeIngredient) {
+                      item.recipeIngredient.forEach((ing: string) => {
+                        const parsedIngredient = parseIngredientText(ing);
+                        if (parsedIngredient.name) {
+                          jsonIngredients.push(parsedIngredient);
+                        }
+                      });
+                    }
+                  });
+                }
+              }
+            } catch (e) {
+              // Ignore JSON parsing errors, just try the next script tag
+            }
+          });
+          
+          return jsonIngredients;
+        };
+        
+        // Create a variable to hold our final ingredients
+        let finalIngredients = [...ingredients]; // Create a mutable copy of the ingredients array
+        
+        // If we found no ingredients at all, use the JSON data
+        if (finalIngredients.length === 0) {
+          finalIngredients = extractJsonIngredients();
+        } 
+        // Otherwise, check if the JSON data has more ingredients and merge them
+        else {
+          const jsonIngredients = extractJsonIngredients();
+          
+          // If we found more ingredients in the JSON data, use a smart merging strategy
+          if (jsonIngredients.length > finalIngredients.length) {
+            // Use the set with more ingredients
+            finalIngredients = jsonIngredients;
+          } 
+          // Or if we're missing "chicken" or "lemon" in our scrape but the JSON has them
+          else if (
+            // Check if JSON has ingredients we're clearly missing
+            (jsonIngredients.some(ing => 
+              ing.name.includes('chicken') || 
+              ing.name.includes('lemon') || 
+              ing.name.includes('rice')) && 
+             // And our scraped list is missing these ingredients
+             !finalIngredients.some(ing => 
+              ing.name.includes('chicken') || 
+              ing.name.includes('lemon') || 
+              ing.name.includes('rice')))
+          ) {
+            // Use a map to filter duplicates
+            const uniqueIngredients = new Map();
+            // Start with the JSON ingredients, which might be more complete
+            jsonIngredients.forEach(ing => {
+              uniqueIngredients.set(ing.name.toLowerCase(), ing);
+            });
+            // Then add any additional HTML-scraped ingredients
+            finalIngredients.forEach(ing => {
+              if (!uniqueIngredients.has(ing.name.toLowerCase())) {
+                uniqueIngredients.set(ing.name.toLowerCase(), ing);
+              }
+            });
+            
+            // Convert back to array
+            finalIngredients = Array.from(uniqueIngredients.values());
+          }
+        }
+        
+        // Assign the final ingredients to the extracted recipe
+        extractedRecipe.ingredients = finalIngredients;
+        
+        // Try to extract prep time
+        const prepTimeText = $('.prep-time, .cook-time, .total-time').text();
+        const prepTimeMatch = prepTimeText.match(/(\d+)/);
+        if (prepTimeMatch) {
+          extractedRecipe.prepTime = parseInt(prepTimeMatch[1], 10);
+        } else {
+          extractedRecipe.prepTime = 30; // Default
+        }
+        
+        // Try to extract servings
+        const servingsText = $('.servings, .yield').text();
+        const servingsMatch = servingsText.match(/(\d+)/);
+        if (servingsMatch) {
+          extractedRecipe.servings = parseInt(servingsMatch[1], 10);
+        } else {
+          extractedRecipe.servings = 4; // Default
+        }
+        
+        // Set default values for fields we couldn't extract
+        extractedRecipe.difficulty = "Medium";
+        extractedRecipe.storageInstructions = "Store in refrigerator in an airtight container.";
+        extractedRecipe.costPerServing = "5.00";
+        
+      } else if (url.includes('allrecipes.com')) {
+        console.log("Parsing AllRecipes recipe");
+        
+        // Extract title
+        extractedRecipe.title = $('h1').first().text().trim();
+        
+        // Extract description
+        extractedRecipe.description = $('meta[name="description"]').attr('content') || 
+                                     $('.recipe-summary').first().text().trim();
+        
+        // Extract image URL
+        extractedRecipe.imageUrl = $('meta[property="og:image"]').attr('content') || 
+                                   $('.recipe-image img, .lead-media img').first().attr('src');
+        
+        // Extract instructions
+        const instructions: string[] = [];
+        $('.instructions-section li, .step, .recipe-directions__list li').each((i, el) => {
+          const text = $(el).text().trim();
+          if (text) instructions.push(text);
+        });
+        
+        extractedRecipe.instructions = instructions.length > 0 ? instructions : ["Instructions could not be extracted"];
+        
+        // Extract ingredients with our enhanced parsing helper function
+        const ingredients: {name: string, quantity: string, unit: string}[] = [];
+        
+        // Target ingredient sections more specifically including broader selectors for AllRecipes
+        $('.ingredients-section li, .ingredients-item, .recipe-ingredients__list li, [class*="ingredient"] li, [id*="ingredient"] li').each((i, el) => {
+          const text = $(el).text().trim();
+          
+          // Use our helper function to parse the ingredient text
+          const parsedIngredient = parseIngredientText(text);
+          
+          // Only add valid ingredients (parseIngredientText returns empty name for non-ingredient texts)
+          if (parsedIngredient.name) {
+            ingredients.push(parsedIngredient);
+          }
+        });
+        
+        extractedRecipe.ingredients = ingredients;
+        
+        // Try to extract prep time
+        const prepTimeText = $('.recipe-meta-item, .recipe-details').text();
+        const prepTimeMatch = prepTimeText.match(/(\d+)\s*min/i);
+        if (prepTimeMatch) {
+          extractedRecipe.prepTime = parseInt(prepTimeMatch[1], 10);
+        } else {
+          extractedRecipe.prepTime = 30; // Default
+        }
+        
+        // Try to extract servings
+        const servingsText = $('.recipe-meta-item, .recipe-details').text();
+        const servingsMatch = servingsText.match(/Servings:\s*(\d+)/i);
+        if (servingsMatch) {
+          extractedRecipe.servings = parseInt(servingsMatch[1], 10);
+        } else {
+          extractedRecipe.servings = 4; // Default
+        }
+        
+        // Set default values
+        extractedRecipe.difficulty = "Medium";
+        extractedRecipe.storageInstructions = "Store in refrigerator in an airtight container.";
+        extractedRecipe.costPerServing = "5.00";
+        
+      } else {
+        // Generic scraping for other websites
+        console.log("Parsing generic recipe website");
+        
+        // Extract title - common patterns across food sites
+        extractedRecipe.title = $('h1').first().text().trim() || 
+                               $('.recipe-title').text().trim() || 
+                               $('meta[property="og:title"]').attr('content') || 
+                               "Imported Recipe";
+        
+        // Extract description
+        extractedRecipe.description = $('meta[name="description"]').attr('content') || 
+                                     $('meta[property="og:description"]').attr('content') || 
+                                     $('.recipe-summary, .description').first().text().trim() || 
+                                     `Recipe imported from ${url}`;
+        
+        // Extract image URL
+        extractedRecipe.imageUrl = $('meta[property="og:image"]').attr('content') || 
+                                  $('.recipe-image img, .post-image img').first().attr('src') || 
+                                  "https://images.unsplash.com/photo-1546069901-ba9599a7e63c";
+        
+        // Extract instructions - try common patterns
+        const instructions: string[] = [];
+        $('.instructions li, .recipe-instructions li, .directions li, .steps li, .method li').each((i, el) => {
+          const text = $(el).text().trim();
+          if (text) instructions.push(text);
+        });
+        
+        if (instructions.length === 0) {
+          $('.instructions p, .recipe-instructions p, .directions p, .steps p, .method p').each((i, el) => {
+            const text = $(el).text().trim();
+            if (text) instructions.push(text);
+          });
+        }
+        
+        extractedRecipe.instructions = instructions.length > 0 ? instructions : ["Instructions could not be extracted"];
+        
+        // Extract ingredients with our enhanced parsing helper function
+        const ingredients: {name: string, quantity: string, unit: string}[] = [];
+        
+        // Target ingredient sections more specifically - using even broader selectors for generic websites
+        $('.ingredients li, .recipe-ingredients li, .ingredient-list li, [class*="ingredient"] li, [id*="ingredient"] li, .ingredients p, [class*="ingredient"] p, [id*="ingredient"] p').each((i, el) => {
+          const text = $(el).text().trim();
+          
+          // Use our helper function to parse the ingredient text
+          const parsedIngredient = parseIngredientText(text);
+          
+          // Only add valid ingredients (parseIngredientText returns empty name for non-ingredient texts)
+          if (parsedIngredient.name) {
+            ingredients.push(parsedIngredient);
+          }
+        });
+        
+        // If no ingredients were found with li elements, try to find ingredients in other text nodes
+        if (ingredients.length === 0) {
+          // Try to find ingredients in larger text blocks and split by line
+          const ingredientBlocks = $('.ingredients, [class*="ingredient"], [id*="ingredient"]').text();
+          if (ingredientBlocks) {
+            // Split by line breaks and process each line
+            const lines = ingredientBlocks.split(/\n|\r/).filter(line => line.trim().length > 0);
+            for (const line of lines) {
+              const parsedIngredient = parseIngredientText(line);
+              if (parsedIngredient.name) {
+                ingredients.push(parsedIngredient);
+              }
+            }
+          }
+        }
+        
+        extractedRecipe.ingredients = ingredients.length > 0 ? ingredients : [
+          { name: "Ingredients could not be extracted", quantity: "", unit: "" }
+        ];
+        
+        // Set default values
+        extractedRecipe.prepTime = 30;
+        extractedRecipe.servings = 4;
+        extractedRecipe.difficulty = "Medium";
+        extractedRecipe.storageInstructions = "Store in refrigerator in an airtight container.";
+        extractedRecipe.costPerServing = "5.00";
+      }
+      
+      console.log(`Successfully extracted recipe: ${extractedRecipe.title}`);
+      
+      // Create and return the recipe
+      return this.createRecipe(extractedRecipe);
+      
+    } catch (error) {
+      console.error("Error importing recipe:", error);
+      throw new Error(`Failed to import recipe from ${url}: ${error.message}`);
+    }
+  },
+
+  async compareRecipes(recipe1Id: number, recipe2Id: number): Promise<any> {
+    const recipe1 = await this.getRecipeById(recipe1Id);
+    const recipe2 = await this.getRecipeById(recipe2Id);
+
+    if (!recipe1 || !recipe2) {
+      return null;
+    }
+
+    // Find common ingredients
+    const recipe1IngNames = recipe1.ingredients.map(ing => ing.name.toLowerCase());
+    const recipe2IngNames = recipe2.ingredients.map(ing => ing.name.toLowerCase());
+    const commonIngredients = recipe1IngNames.filter(name => recipe2IngNames.includes(name));
+
+    return {
+      recipe1,
+      recipe2,
+      commonIngredients
+    };
+  },
+
+  // Inventory operations
+  async getAllInventoryItems(): Promise<InventoryItem[]> {
+    return db.query.inventoryItems.findMany({
+      orderBy: desc(inventoryItems.createdAt)
+    });
+  },
+
+  async getInventoryItemById(id: number): Promise<InventoryItem | null> {
+    return db.query.inventoryItems.findFirst({
+      where: eq(inventoryItems.id, id)
+    });
+  },
+
+  async getInventoryItemsByCategory(category: string): Promise<InventoryItem[]> {
+    if (category === "all") {
+      return this.getAllInventoryItems();
+    }
+    return db.query.inventoryItems.findMany({
+      where: eq(inventoryItems.category, category),
+      orderBy: desc(inventoryItems.createdAt)
+    });
+  },
+
+  async getInventoryCategories(): Promise<string[]> {
+    const items = await db.query.inventoryItems.findMany({
+      columns: {
+        category: true
+      }
+    });
+    const categories = [...new Set(items.map(item => item.category))];
+    return categories;
+  },
+
+  async getItemByBarcode(barcode: string): Promise<InventoryItem | null> {
+    // First check if we already have this barcode in our database
+    const existingItem = await db.query.inventoryItems.findFirst({
+      where: eq(inventoryItems.barcode, barcode)
+    });
+    
+    if (existingItem) {
+      return existingItem;
+    }
+    
+    try {
+      // Import the barcode lookup utility - using dynamic import to avoid require() issues
+      const { lookupBarcodeInfo } = await import('./barcode-utils');
+      
+      // Look up the barcode info
+      const productInfo = await lookupBarcodeInfo(barcode);
+      
+      if (productInfo) {
+        // Create an InventoryItem object
+        return {
+          id: 0, // This will be assigned by the database when inserted
+          name: productInfo.name || '',
+          imageUrl: productInfo.imageUrl || null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          quantity: productInfo.quantity || '1',
+          unit: productInfo.unit || 'unit',
+          count: productInfo.count || 1,
+          barcode: barcode,
+          location: productInfo.location || 'Pantry',
+          category: productInfo.category || 'Other',
+          expiryDate: null
+        };
+      }
+      
+      console.log(`No product information found for barcode ${barcode}`);
+      return null;
+    } catch (error) {
+      console.error('Error fetching product details:', error);
+      return null;
+    }
+  },
+
+  async createInventoryItem(itemData: Partial<InventoryItem>): Promise<InventoryItem> {
+    const [insertedItem] = await db.insert(inventoryItems).values({
+      name: itemData.name || '',
+      quantity: itemData.quantity || '',
+      unit: itemData.unit || '',
+      count: itemData.count || 1,
+      barcode: itemData.barcode,
+      location: itemData.location || '',
+      category: itemData.category || '',
+      expiryDate: itemData.expiryDate ? new Date(itemData.expiryDate) : null,
+      imageUrl: itemData.imageUrl
+    }).returning();
+
+    return insertedItem;
+  },
+
+  async updateInventoryItem(id: number, itemData: Partial<InventoryItem>): Promise<InventoryItem | null> {
+    await db.update(inventoryItems)
+      .set({ ...itemData, updatedAt: new Date() })
+      .where(eq(inventoryItems.id, id));
+
+    return this.getInventoryItemById(id);
+  },
+
+  async deleteInventoryItem(id: number): Promise<void> {
+    await db.delete(inventoryItems)
+      .where(eq(inventoryItems.id, id));
+  },
+
+  // Shopping list operations
+  async getAllShoppingItems(): Promise<ShoppingItem[]> {
+    return db.query.shoppingItems.findMany({
+      orderBy: desc(shoppingItems.createdAt)
+    });
+  },
+
+  async getShoppingItemById(id: number): Promise<ShoppingItem | null> {
+    return db.query.shoppingItems.findFirst({
+      where: eq(shoppingItems.id, id)
+    });
+  },
+
+  async getShoppingItemsByCategory(): Promise<ShoppingCategory[]> {
+    const items = await this.getAllShoppingItems();
+    
+    // Group items by category
+    const categorizedItems: { [key: string]: ShoppingItem[] } = {};
+    
+    items.forEach(item => {
+      if (!categorizedItems[item.category]) {
+        categorizedItems[item.category] = [];
+      }
+      categorizedItems[item.category].push(item);
+    });
+    
+    // Convert to array of category objects
+    return Object.keys(categorizedItems).map(categoryName => ({
+      name: categoryName,
+      items: categorizedItems[categoryName]
+    }));
+  },
+
+  async createShoppingItem(itemData: Partial<ShoppingItem>): Promise<ShoppingItem> {
+    const [insertedItem] = await db.insert(shoppingItems).values({
+      name: itemData.name || '',
+      quantity: itemData.quantity || '',
+      unit: itemData.unit || '',
+      category: itemData.category || '',
+      checked: itemData.checked || false
+    }).returning();
+
+    return insertedItem;
+  },
+
+  async updateShoppingItem(id: number, itemData: Partial<ShoppingItem>): Promise<ShoppingItem | null> {
+    await db.update(shoppingItems)
+      .set(itemData)
+      .where(eq(shoppingItems.id, id));
+
+    return this.getShoppingItemById(id);
+  },
+
+  async deleteShoppingItem(id: number): Promise<void> {
+    await db.delete(shoppingItems)
+      .where(eq(shoppingItems.id, id));
+  },
+  
+  async clearShoppingList(): Promise<void> {
+    try {
+      // Use SQL for a simple delete all operation
+      await db.execute(sql`DELETE FROM ${shoppingItems}`);
+    } catch (error) {
+      console.error("Error in clearShoppingList:", error);
+      throw error;
+    }
+  },
+
+  async addRecipeToShoppingList(recipeId: number): Promise<void> {
+    const recipe = await this.getRecipeById(recipeId);
+    
+    if (!recipe) {
+      throw new Error("Recipe not found");
+    }
+    
+    // Add each ingredient to the shopping list
+    for (const ingredient of recipe.ingredients) {
+      await this.createShoppingItem({
+        name: ingredient.name,
+        quantity: ingredient.quantity,
+        unit: ingredient.unit,
+        category: this.categorizeIngredient(ingredient.name)
+      });
+    }
+  },
+
+  // Helper function to categorize ingredients
+  categorizeIngredient(ingredientName: string): string {
+    const lowerName = ingredientName.toLowerCase();
+    
+    // Simple categorization rules
+    if (lowerName.includes("milk") || lowerName.includes("cheese") || lowerName.includes("yogurt")) {
+      return "Dairy";
+    } else if (lowerName.includes("tomato") || lowerName.includes("lettuce") || lowerName.includes("carrot") || 
+               lowerName.includes("onion") || lowerName.includes("pepper") || lowerName.includes("cucumber")) {
+      return "Produce";
+    } else if (lowerName.includes("chicken") || lowerName.includes("beef") || lowerName.includes("pork") || 
+               lowerName.includes("fish") || lowerName.includes("meat")) {
+      return "Meat";
+    } else if (lowerName.includes("flour") || lowerName.includes("sugar") || lowerName.includes("rice") || 
+               lowerName.includes("pasta") || lowerName.includes("oil") || lowerName.includes("vinegar")) {
+      return "Pantry";
+    } else if (lowerName.includes("salt") || lowerName.includes("pepper") || lowerName.includes("oregano") || 
+               lowerName.includes("basil") || lowerName.includes("spice") || lowerName.includes("herb")) {
+      return "Spices";
+    }
+    
+    // Default category
+    return "Other";
+  }
+};

@@ -1,0 +1,44 @@
+Error fetching inventory items: SqliteError: no such table: inventory_items
+    at Database.prepare (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/better-sqlite3/lib/methods/wrappers.js:5:21)
+    at BetterSQLiteSession.prepareQuery (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/better-sqlite3/session.ts:50:28)
+    at QueryPromise._prepare (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/sqlite-core/query-builders/query.ts:147:78)
+    at QueryPromise.executeRaw (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/sqlite-core/query-builders/query.ts:193:15)
+    at QueryPromise.execute (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/sqlite-core/query-builders/query.ts:197:15)
+    at QueryPromise.then (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/query-promise.ts:31:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+  code: 'SQLITE_ERROR'
+}
+7:00:42 PM [express] GET /api/inventory 500 in 6ms :: {"message":"Failed to fetch inventory items"}
+Error fetching inventory categories: SqliteError: no such table: inventory_items
+    at Database.prepare (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/better-sqlite3/lib/methods/wrappers.js:5:21)
+    at BetterSQLiteSession.prepareQuery (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/better-sqlite3/session.ts:50:28)
+    at QueryPromise._prepare (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/sqlite-core/query-builders/query.ts:147:78)
+    at QueryPromise.executeRaw (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/sqlite-core/query-builders/query.ts:193:15)
+    at QueryPromise.execute (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/sqlite-core/query-builders/query.ts:197:15)
+    at QueryPromise.then (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/query-promise.ts:31:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+  code: 'SQLITE_ERROR'
+}
+7:00:42 PM [express] GET /api/inventory/categories 500 in 1ms :: {"message":"Failed to fetch invento…
+Error fetching inventory items: SqliteError: no such table: inventory_items
+    at Database.prepare (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/better-sqlite3/lib/methods/wrappers.js:5:21)
+    at BetterSQLiteSession.prepareQuery (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/better-sqlite3/session.ts:50:28)
+    at QueryPromise._prepare (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/sqlite-core/query-builders/query.ts:147:78)
+    at QueryPromise.executeRaw (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/sqlite-core/query-builders/query.ts:193:15)
+    at QueryPromise.execute (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/sqlite-core/query-builders/query.ts:197:15)
+    at QueryPromise.then (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/query-promise.ts:31:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+  code: 'SQLITE_ERROR'
+}
+7:00:43 PM [express] GET /api/inventory 500 in 4ms :: {"message":"Failed to fetch inventory items"}
+Error fetching inventory categories: SqliteError: no such table: inventory_items
+    at Database.prepare (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/better-sqlite3/lib/methods/wrappers.js:5:21)
+    at BetterSQLiteSession.prepareQuery (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/better-sqlite3/session.ts:50:28)
+    at QueryPromise._prepare (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/sqlite-core/query-builders/query.ts:147:78)
+    at QueryPromise.executeRaw (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/sqlite-core/query-builders/query.ts:193:15)
+    at QueryPromise.execute (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/sqlite-core/query-builders/query.ts:197:15)
+    at QueryPromise.then (/Users/shivarajchallapalli/Downloads/GroceryCompass/node_modules/src/query-promise.ts:31:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+  code: 'SQLITE_ERROR'
+}
+7:00:43 PM [express] GET /api/inventory/categories 500 in 2ms :: {"message":"Failed to fetch invento…
