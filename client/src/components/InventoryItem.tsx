@@ -6,9 +6,10 @@ interface InventoryItemProps {
   item: InventoryItemType;
   onClick: (item: InventoryItemType) => void;
   onDelete?: (item: InventoryItemType) => void;
+  isVegetarian?: boolean;
 }
 
-export default function InventoryItem({ item, onClick, onDelete }: InventoryItemProps) {
+export default function InventoryItem({ item, onClick, onDelete, isVegetarian }: InventoryItemProps) {
   const getExpiryText = () => {
     if (!item.expiry_date) return null;
     const expiryDate = new Date(item.expiry_date);
@@ -51,7 +52,14 @@ export default function InventoryItem({ item, onClick, onDelete }: InventoryItem
       <div className="flex-1">
         <div className="flex justify-between items-start">
           <div>
-            <h3 className="font-medium">{item.name}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-medium">{item.name}</h3>
+              {isVegetarian !== undefined && (
+                <div className="p-1 bg-white/90 rounded-full">
+                  <i className={`fas ${isVegetarian ? 'fa-leaf text-green-500' : 'fa-drumstick-bite text-red-500'} text-xs`}></i>
+                </div>
+              )}
+            </div>
             <p className="text-xs text-slate-500">
               {item.quantity} {item.unit} • {item.category} • {item.location}
             </p>

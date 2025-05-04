@@ -236,15 +236,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Inventory routes
   app.get("/api/inventory", async (req, res) => {
     try {
-      const { category } = req.query;
-      let items;
-      
-      if (category && category !== "all") {
-        items = await storage.getInventoryItemsByCategory(category as string);
-      } else {
-        items = await storage.getAllInventoryItems();
-      }
-      
+      const category = req.query.category as string;
+      const items = category && category !== "all" 
+        ? await storage.getInventoryItemsByCategory(category)
+        : await storage.getAllInventoryItems();
       res.json(items);
     } catch (error) {
       console.error("Error fetching inventory items:", error);
@@ -300,7 +295,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/inventory/:id", async (req, res) => {
     try {
-      const item = await storage.updateInventoryItem(Number(req.params.id), req.body);
+      const { id } = req.params;
+      const updateData = {
+        ...req.body,
+        updated_at: new Date()
+      };
+
+      // Ensure all fields are properly formatted
+      if (updateData.count) {
+        updateData.count = Number(updateData.count);
+      }
+      if (updateData.expiry_date) {
+        updateData.expiry_date = new Date(updateData.expiry_date);
+      }
+
+      const item = await storage.updateInventoryItem(Number(id), updateData);
       if (!item) {
         return res.status(404).json({ message: "Inventory item not found" });
       }

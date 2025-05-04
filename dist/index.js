@@ -6451,6 +6451,60 @@ function categorizeIngredient(name) {
   }
   return { category: "Other", storage: "Pantry" };
 }
+var nonVegetarianIngredients = [
+  // Meat
+  "chicken",
+  "beef",
+  "pork",
+  "lamb",
+  "turkey",
+  "bacon",
+  "sausage",
+  "ham",
+  "steak",
+  "ground beef",
+  "ribs",
+  "chops",
+  // Seafood
+  "fish",
+  "salmon",
+  "tuna",
+  "shrimp",
+  "crab",
+  "lobster",
+  "mussel",
+  "clam",
+  "oyster",
+  "scallop",
+  "cod",
+  "tilapia",
+  // Eggs and egg products
+  "egg",
+  "eggs",
+  "egg white",
+  "egg whites",
+  "egg yolk",
+  "egg yolks",
+  "egg powder",
+  "egg substitute",
+  // Meat-based products
+  "gelatin",
+  "rennet",
+  "lard",
+  "tallow",
+  "broth",
+  "stock",
+  "bone broth",
+  "fish sauce",
+  "oyster sauce",
+  "anchovy"
+];
+function isRecipeVegetarian(ingredients) {
+  const lowerIngredients = ingredients.map((ing) => ing.name.toLowerCase());
+  return !nonVegetarianIngredients.some(
+    (nonVeg) => lowerIngredients.some((ing) => ing.includes(nonVeg))
+  );
+}
 var storage = {
   // Recipe operations
   async getAllRecipes() {
@@ -6924,8 +6978,25 @@ var storage = {
     return insertedItem;
   },
   async updateInventoryItem(id, itemData) {
-    await db.update(inventoryItems).set({ ...itemData, updated_at: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm2.eq)(inventoryItems.id, id));
-    return this.getInventoryItemById(id);
+    try {
+      const updateData = {
+        ...itemData,
+        name: String(itemData.name || ""),
+        quantity: String(itemData.quantity || ""),
+        unit: String(itemData.unit || ""),
+        count: Number(itemData.count || 1),
+        barcode: itemData.barcode || "",
+        location: itemData.location || "Pantry",
+        category: itemData.category || "Other",
+        expiry_date: itemData.expiry_date ? new Date(itemData.expiry_date) : null,
+        updated_at: /* @__PURE__ */ new Date()
+      };
+      await db.update(inventoryItems).set(updateData).where((0, import_drizzle_orm2.eq)(inventoryItems.id, id));
+      return this.getInventoryItemById(id);
+    } catch (error) {
+      console.error("Error updating inventory item:", error);
+      throw error;
+    }
   },
   async deleteInventoryItem(id) {
     await db.delete(inventoryItems).where((0, import_drizzle_orm2.eq)(inventoryItems.id, id));
@@ -7109,6 +7180,20 @@ var storage = {
   // Helper function to convert array to Set
   arrayToSet(arr) {
     return new Set(arr);
+  },
+  // Add new function to get recipes by vegetarian status
+  async getRecipesByVegetarianStatus() {
+    const allRecipes = await this.getAllRecipes();
+    const vegetarian = [];
+    const nonVegetarian = [];
+    for (const recipe of allRecipes) {
+      if (isRecipeVegetarian(recipe.ingredients)) {
+        vegetarian.push(recipe);
+      } else {
+        nonVegetarian.push(recipe);
+      }
+    }
+    return { vegetarian, nonVegetarian };
   }
 };
 
@@ -7293,13 +7378,8 @@ async function registerRoutes(app2) {
   });
   app2.get("/api/inventory", async (req, res) => {
     try {
-      const { category } = req.query;
-      let items;
-      if (category && category !== "all") {
-        items = await storage.getInventoryItemsByCategory(category);
-      } else {
-        items = await storage.getAllInventoryItems();
-      }
+      const category = req.query.category;
+      const items = category && category !== "all" ? await storage.getInventoryItemsByCategory(category) : await storage.getAllInventoryItems();
       res.json(items);
     } catch (error) {
       console.error("Error fetching inventory items:", error);
@@ -7350,7 +7430,18 @@ async function registerRoutes(app2) {
   });
   app2.put("/api/inventory/:id", async (req, res) => {
     try {
-      const item = await storage.updateInventoryItem(Number(req.params.id), req.body);
+      const { id } = req.params;
+      const updateData = {
+        ...req.body,
+        updated_at: /* @__PURE__ */ new Date()
+      };
+      if (updateData.count) {
+        updateData.count = Number(updateData.count);
+      }
+      if (updateData.expiry_date) {
+        updateData.expiry_date = new Date(updateData.expiry_date);
+      }
+      const item = await storage.updateInventoryItem(Number(id), updateData);
       if (!item) {
         return res.status(404).json({ message: "Inventory item not found" });
       }

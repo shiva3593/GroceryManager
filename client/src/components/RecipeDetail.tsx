@@ -187,6 +187,82 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
   // Convert string rating to number for star display
   const ratingNum = typeof recipe.rating === 'string' ? parseFloat(recipe.rating) : Number(recipe.rating) || 0;
 
+  // Add this function to check if an ingredient is non-vegetarian
+  const isNonVegetarianIngredient = (ingredientName: string) => {
+    const ingredientNameLower = ingredientName.toLowerCase();
+    
+    // Define non-vegetarian patterns with context
+    const nonVegPatterns = [
+      // Meats - must be standalone or clearly meat-based
+      { pattern: /\b(chicken|beef|pork|lamb|turkey|bacon|sausage|ham|steak|ribs?|chops?)\b/, 
+        exceptions: ['chicken of the woods', 'mushroom bacon', 'vegan bacon', 'vegetarian bacon'] },
+      
+      // Seafood - must be standalone or clearly seafood-based
+      { pattern: /\b(fish|salmon|tuna|shrimp|crab|lobster|mussel|clam|oyster|scallop|cod|tilapia)\b/,
+        exceptions: ['fish sauce', 'oyster sauce', 'fish pepper', 'fish mint'] },
+      
+      // Eggs - must be standalone or clearly egg-based
+      { pattern: /\b(egg|eggs?)\b/,
+        exceptions: ['eggplant', 'egg fruit', 'egg noodles', 'egg pasta', 'egg roll wrapper'] },
+      
+      // Animal-derived products - must be standalone
+      { pattern: /\b(gelatin|rennet|lard|tallow)\b/,
+        exceptions: ['agar agar', 'vegetable rennet', 'vegetable gelatin'] },
+      
+      // Meat-based products - must be clearly meat-based
+      { pattern: /\b(bone broth|meat broth|chicken broth|beef broth|pork broth|fish broth)\b/,
+        exceptions: ['vegetable broth', 'mushroom broth', 'vegan broth'] }
+    ];
+
+    // Check each pattern
+    for (const { pattern, exceptions } of nonVegPatterns) {
+      if (pattern.test(ingredientNameLower)) {
+        // If there's a match, check if it's an exception
+        const isException = exceptions.some(exception => 
+          new RegExp(exception, 'i').test(ingredientNameLower)
+        );
+        
+        if (!isException) {
+          // Additional context checks for ambiguous cases
+          if (pattern.source.includes('broth')) {
+            // For broth, check if it's clearly vegetable-based
+            if (/\b(vegetable|vegan|mushroom|herb)\s+broth\b/i.test(ingredientNameLower)) {
+              continue;
+            }
+          }
+          
+          if (pattern.source.includes('sauce')) {
+            // For sauces, check if they're clearly vegetarian
+            if (/\b(vegetable|vegan|mushroom|herb)\s+sauce\b/i.test(ingredientNameLower)) {
+              continue;
+            }
+          }
+          
+          return true;
+        }
+      }
+    }
+
+    // Check for compound ingredients that might contain non-vegetarian items
+    const compoundChecks = [
+      { pattern: /\b(meat|chicken|beef|pork|fish)\s+(stock|broth|sauce|base|extract)\b/i },
+      { pattern: /\b(animal|meat)\s+(fat|gelatin|protein)\b/i },
+      { pattern: /\b(egg|fish)\s+(powder|extract|protein)\b/i }
+    ];
+
+    for (const { pattern } of compoundChecks) {
+      if (pattern.test(ingredientNameLower)) {
+        // Check for vegetarian alternatives
+        if (/\b(vegetable|vegan|plant|mushroom)\s+(stock|broth|sauce|base|extract|fat|protein)\b/i.test(ingredientNameLower)) {
+          continue;
+        }
+        return true;
+      }
+    }
+
+    return false;
+  };
+
   return (
     <div>
       <Dialog open={isOpen} onOpenChange={onClose}>
@@ -343,33 +419,44 @@ export default function RecipeDetail({ recipe, isOpen, onClose }: RecipeDetailPr
                 {!isEditingIngredients ? (
                   // View mode
                   <ul className="space-y-2 recipe-content">
-                    {ingredients.map((ingredient, index) => (
-                      <li key={index} className="flex items-center">
-                        <Checkbox id={`ingredient-${index}`} className="mr-2" />
-                        <label htmlFor={`ingredient-${index}`} className="ml-2">
-                          {ingredient.quantity} {ingredient.unit} {ingredient.name}
-                        </label>
-                      </li>
-                    ))}
+                    {ingredients.map((ingredient, index) => {
+                      const isNonVeg = isNonVegetarianIngredient(ingredient.name);
+                      return (
+                        <li key={index} className="flex items-center">
+                          <Checkbox id={`ingredient-${index}`} className="mr-2" />
+                          <label 
+                            htmlFor={`ingredient-${index}`} 
+                            className={`ml-2 ${isNonVeg ? 'text-red-600 font-medium' : ''}`}
+                          >
+                            {ingredient.quantity} {ingredient.unit} {ingredient.name}
+                          </label>
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : (
                   // Edit mode
                   <div>
                     <ul className="space-y-2 recipe-content mb-4">
-                      {ingredients.map((ingredient, index) => (
-                        <li key={index} className="flex items-center justify-between bg-slate-50 p-2 rounded-md">
-                          <div className="flex-1">
-                            <span>{ingredient.quantity} {ingredient.unit} {ingredient.name}</span>
-                          </div>
-                          <Button 
-                            variant="ghost" 
-                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50" 
-                            onClick={() => handleRemoveIngredient(index)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </li>
-                      ))}
+                      {ingredients.map((ingredient, index) => {
+                        const isNonVeg = isNonVegetarianIngredient(ingredient.name);
+                        return (
+                          <li key={index} className="flex items-center justify-between bg-slate-50 p-2 rounded-md">
+                            <div className="flex-1">
+                              <span className={isNonVeg ? 'text-red-600 font-medium' : ''}>
+                                {ingredient.quantity} {ingredient.unit} {ingredient.name}
+                              </span>
+                            </div>
+                            <Button 
+                              variant="ghost" 
+                              className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50" 
+                              onClick={() => handleRemoveIngredient(index)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </li>
+                        );
+                      })}
                     </ul>
                     
                     {/* Add new ingredient form */}

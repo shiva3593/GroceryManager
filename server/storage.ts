@@ -447,6 +447,28 @@ function categorizeIngredient(name: string): { category: string, storage: string
   return { category: 'Other', storage: 'Pantry' };
 }
 
+// List of non-vegetarian ingredients (including eggs)
+const nonVegetarianIngredients = [
+  // Meat
+  'chicken', 'beef', 'pork', 'lamb', 'turkey', 'bacon', 'sausage', 'ham', 'steak', 'ground beef', 'ribs', 'chops',
+  // Seafood
+  'fish', 'salmon', 'tuna', 'shrimp', 'crab', 'lobster', 'mussel', 'clam', 'oyster', 'scallop', 'cod', 'tilapia',
+  // Eggs and egg products
+  'egg', 'eggs', 'egg white', 'egg whites', 'egg yolk', 'egg yolks', 'egg powder', 'egg substitute',
+  // Meat-based products
+  'gelatin', 'rennet', 'lard', 'tallow', 'broth', 'stock', 'bone broth', 'fish sauce', 'oyster sauce', 'anchovy'
+];
+
+// Function to check if a recipe is vegetarian
+function isRecipeVegetarian(ingredients: Ingredient[]): boolean {
+  const lowerIngredients = ingredients.map(ing => ing.name.toLowerCase());
+  
+  // Check if any ingredient matches non-vegetarian keywords
+  return !nonVegetarianIngredients.some(nonVeg => 
+    lowerIngredients.some(ing => ing.includes(nonVeg))
+  );
+}
+
 // Recipe functions
 export const storage = {
   // Recipe operations
@@ -1129,11 +1151,30 @@ export const storage = {
   },
 
   async updateInventoryItem(id: number, itemData: Partial<InventoryItem>): Promise<InventoryItem | null> {
-    await db.update(inventoryItems)
-      .set({ ...itemData, updated_at: new Date() })
-      .where(eq(inventoryItems.id, id));
+    try {
+      // Ensure all required fields are properly formatted
+      const updateData = {
+        ...itemData,
+        name: String(itemData.name || ''),
+        quantity: String(itemData.quantity || ''),
+        unit: String(itemData.unit || ''),
+        count: Number(itemData.count || 1),
+        barcode: itemData.barcode || '',
+        location: itemData.location || 'Pantry',
+        category: itemData.category || 'Other',
+        expiry_date: itemData.expiry_date ? new Date(itemData.expiry_date) : null,
+        updated_at: new Date()
+      };
 
-    return this.getInventoryItemById(id);
+      await db.update(inventoryItems)
+        .set(updateData)
+        .where(eq(inventoryItems.id, id));
+
+      return this.getInventoryItemById(id);
+    } catch (error) {
+      console.error('Error updating inventory item:', error);
+      throw error;
+    }
   },
 
   async deleteInventoryItem(id: number): Promise<void> {
@@ -1370,5 +1411,23 @@ export const storage = {
   // Helper function to convert array to Set
   arrayToSet<T>(arr: T[]): Set<T> {
     return new Set(arr);
+  },
+
+  // Add new function to get recipes by vegetarian status
+  async getRecipesByVegetarianStatus(): Promise<{ vegetarian: Recipe[], nonVegetarian: Recipe[] }> {
+    const allRecipes = await this.getAllRecipes();
+    
+    const vegetarian: Recipe[] = [];
+    const nonVegetarian: Recipe[] = [];
+    
+    for (const recipe of allRecipes) {
+      if (isRecipeVegetarian(recipe.ingredients)) {
+        vegetarian.push(recipe);
+      } else {
+        nonVegetarian.push(recipe);
+      }
+    }
+    
+    return { vegetarian, nonVegetarian };
   }
 };

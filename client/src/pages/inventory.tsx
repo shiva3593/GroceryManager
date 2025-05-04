@@ -46,6 +46,49 @@ const inventoryFormSchema = z.object({
 
 type InventoryFormValues = z.infer<typeof inventoryFormSchema>;
 
+const isNonVegetarianIngredient = (name: string) => {
+  const nonVegPatterns = [
+    // Meats
+    /\b(beef|pork|chicken|turkey|lamb|veal|bacon|ham|sausage|steak|ribs|meat)\b/i,
+    // Seafood
+    /\b(fish|salmon|tuna|shrimp|prawn|crab|lobster|oyster|clam|mussel|seafood)\b/i,
+    // Eggs
+    /\b(egg|eggs)\b/i,
+    // Animal-derived products
+    /\b(gelatin|rennet|lard|tallow)\b/i,
+    // Meat-based products
+    /\b(broth|stock|gravy|drippings)\b/i
+  ];
+
+  // Check for exceptions
+  const exceptions = [
+    /\b(vegetable broth|vegetable stock|mushroom broth|mushroom stock)\b/i,
+    /\b(eggplant|egg noodles|egg roll wrapper)\b/i
+  ];
+
+  // If any exception matches, it's not non-vegetarian
+  if (exceptions.some(pattern => pattern.test(name))) {
+    return false;
+  }
+
+  // Check if any non-vegetarian pattern matches
+  return nonVegPatterns.some(pattern => pattern.test(name));
+};
+
+// Define standard aisles/categories
+const STANDARD_AISLES = [
+  "Produce",
+  "Dairy",
+  "Meat & Seafood",
+  "Pantry",
+  "Freezer",
+  "Spices",
+  "Beverages",
+  "Bakery",
+  "Snacks",
+  "Other"
+];
+
 export default function Inventory() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
@@ -69,6 +112,7 @@ export default function Inventory() {
 
   const { data: inventoryItems, isLoading } = useQuery<InventoryItem[]>({
     queryKey: ["/api/inventory", { category: selectedCategory }],
+    queryFn: () => apiRequest("GET", `/api/inventory${selectedCategory !== "all" ? `?category=${selectedCategory}` : ""}`),
   });
 
   const { data: categories } = useQuery<string[]>({
@@ -99,7 +143,7 @@ export default function Inventory() {
   
   const updateItemMutation = useMutation({
     mutationFn: (data: { id: number; item: InventoryFormValues }) =>
-      apiRequest("PATCH", `/api/inventory/${data.id}`, data.item),
+      apiRequest("PUT", `/api/inventory/${data.id}`, data.item),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
       setIsAddItemOpen(false);
@@ -237,18 +281,6 @@ export default function Inventory() {
     }
   };
 
-  const onSubmit = (values: InventoryFormValues) => {
-    if (editingItem) {
-      updateItemMutation.mutate({ id: editingItem.id, item: values });
-    } else {
-      addItemMutation.mutate(values);
-    }
-  };
-
-  const handleCategoryChange = (category: string) => {
-    setSelectedCategory(category);
-  };
-  
   const handleEditItem = (item: InventoryItem) => {
     setEditingItem(item);
     
@@ -259,15 +291,15 @@ export default function Inventory() {
       formattedExpiryDate = date.toISOString().split('T')[0];
     }
     
-    // Set form values
+    // Set form values with all fields
     form.reset({
       name: item.name,
       barcode: item.barcode || "",
       quantity: item.quantity,
       unit: item.unit,
-      count: item.count ?? undefined,
-      category: item.category ?? undefined,
-      location: item.location ?? undefined,
+      count: item.count ?? 1,
+      category: item.category || "Other",
+      location: item.location || "Pantry",
       expiry_date: formattedExpiryDate
     });
     
@@ -275,12 +307,46 @@ export default function Inventory() {
     setIsAddItemOpen(true);
   };
 
+  const onSubmit = (values: InventoryFormValues) => {
+    if (editingItem) {
+      // Ensure all fields are included in the update
+      const updateData = {
+        id: editingItem.id,
+        item: {
+          ...values,
+          // Ensure count is a number
+          count: Number(values.count),
+          // Ensure category is set
+          category: values.category || "Other",
+          // Ensure location is set
+          location: values.location || "Pantry"
+        }
+      };
+      updateItemMutation.mutate(updateData);
+    } else {
+      addItemMutation.mutate(values);
+    }
+  };
+
+  const handleCategoryChange = (category: string) => {
+    setSelectedCategory(category);
+  };
+
+  // Group items by category
+  const groupedItems = inventoryItems?.reduce((acc, item) => {
+    const category = item.category || 'Uncategorized';
+    if (!acc[category]) {
+      acc[category] = [];
+    }
+    acc[category].push(item);
+    return acc;
+  }, {} as Record<string, InventoryItem[]>);
+
   return (
     <main className="pb-16">
       <div className="sticky top-[57px] sm:top-[97px] z-10 flex items-center justify-between p-4 bg-white border-b border-slate-200">
         <h2 className="text-lg font-semibold">My Inventory</h2>
         <div className="flex space-x-2">
-
           <Button 
             onClick={() => setIsScannerOpen(true)}
             variant="secondary" 
@@ -309,13 +375,13 @@ export default function Inventory() {
           All Items
         </button>
         
-        {categories && categories.map((category, index) => (
+        {STANDARD_AISLES.map((aisle) => (
           <button 
-            key={index}
-            onClick={() => handleCategoryChange(category)}
-            className={`px-3 py-1 mr-2 text-sm rounded-full ${selectedCategory === category ? "bg-primary text-white" : "bg-white border border-slate-300 text-slate-700"}`}
+            key={aisle}
+            onClick={() => handleCategoryChange(aisle)}
+            className={`px-3 py-1 mr-2 text-sm rounded-full ${selectedCategory === aisle ? "bg-primary text-white" : "bg-white border border-slate-300 text-slate-700"}`}
           >
-            {category}
+            {aisle}
           </button>
         ))}
       </div>
@@ -326,18 +392,26 @@ export default function Inventory() {
             <i className="fas fa-spinner fa-spin text-primary text-xl"></i>
             <p className="mt-2 text-slate-500">Loading inventory...</p>
           </div>
-        ) : inventoryItems && inventoryItems.length > 0 ? (
-          inventoryItems.map((item) => (
-            <InventoryItemComponent 
-              key={item.id} 
-              item={item} 
-              onClick={() => handleEditItem(item)}
-              onDelete={(item) => {
-                if (window.confirm(`Are you sure you want to delete ${item.name}?`)) {
-                  deleteItemMutation.mutate(item.id);
-                }
-              }} 
-            />
+        ) : groupedItems && Object.keys(groupedItems).length > 0 ? (
+          Object.entries(groupedItems).map(([category, items]) => (
+            <div key={category} className="py-4">
+              <div className="px-4 mb-2">
+                <h3 className="text-lg font-semibold text-slate-900">{category}</h3>
+              </div>
+              {items.map((item) => (
+                <InventoryItemComponent 
+                  key={item.id} 
+                  item={item} 
+                  onClick={() => handleEditItem(item)}
+                  onDelete={(item) => {
+                    if (window.confirm(`Are you sure you want to delete ${item.name}?`)) {
+                      deleteItemMutation.mutate(item.id);
+                    }
+                  }}
+                  isVegetarian={!isNonVegetarianIngredient(item.name)}
+                />
+              ))}
+            </div>
           ))
         ) : (
           <div className="text-center py-10">
@@ -351,18 +425,8 @@ export default function Inventory() {
         onOpenChange={(open) => {
           setIsAddItemOpen(open);
           if (!open) {
-            // Reset form and editing state when dialog is closed
             setEditingItem(null);
-            form.reset({
-              name: "",
-              barcode: "",
-              quantity: "",
-              unit: "unit",
-              count: 1,
-              location: "Pantry",
-              expiry_date: "",
-              category: "Pantry",
-            });
+            form.reset();
           }
         }}>
         <DialogContent className="overflow-y-auto max-h-[85vh]">
@@ -487,37 +551,32 @@ export default function Inventory() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="category"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Category</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="Produce">Produce</SelectItem>
-                          <SelectItem value="Dairy">Dairy</SelectItem>
-                          <SelectItem value="Meat">Meat</SelectItem>
-                          <SelectItem value="Pantry">Pantry</SelectItem>
-                          <SelectItem value="Freezer">Freezer</SelectItem>
-                          <SelectItem value="Spices">Spices</SelectItem>
-                          <SelectItem value="Beverages">Beverages</SelectItem>
-                          <SelectItem value="Bakery">Bakery</SelectItem>
-                          <SelectItem value="Snacks">Snacks</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              <FormField
+                control={form.control}
+                name="category"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Aisle/Category</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select aisle" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {STANDARD_AISLES.map((aisle) => (
+                          <SelectItem key={aisle} value={aisle}>
+                            {aisle}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
+              <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
                   name="location"

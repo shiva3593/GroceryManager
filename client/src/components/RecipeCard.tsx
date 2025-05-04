@@ -6,9 +6,10 @@ import { useToast } from "@/hooks/use-toast";
 interface RecipeCardProps {
   recipe: Recipe;
   onViewRecipe: (recipe: Recipe) => void;
+  isVegetarian?: boolean;
 }
 
-export default function RecipeCard({ recipe, onViewRecipe }: RecipeCardProps) {
+export default function RecipeCard({ recipe, onViewRecipe, isVegetarian }: RecipeCardProps) {
   const [isFavorited, setIsFavorited] = useState(recipe.is_favorite);
   const { toast } = useToast();
   const [isUpdating, setIsUpdating] = useState(false);
@@ -54,6 +55,11 @@ export default function RecipeCard({ recipe, onViewRecipe }: RecipeCardProps) {
           >
             <i className={`fas fa-heart text-sm ${isFavorited ? 'text-red-500' : 'text-slate-700'}`}></i>
           </button>
+          {isVegetarian !== undefined && (
+            <div className="p-1.5 bg-white/90 rounded-full">
+              <i className={`fas ${isVegetarian ? 'fa-leaf text-green-500' : 'fa-drumstick-bite text-red-500'} text-sm`}></i>
+            </div>
+          )}
           <button className="p-1.5 bg-white/90 rounded-full text-slate-700 hover:bg-white" aria-label="More options">
             <i className="fas fa-ellipsis-v text-sm"></i>
           </button>
