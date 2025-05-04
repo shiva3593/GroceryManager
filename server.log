@@ -1,0 +1,121 @@
+
+> rest-express@1.0.0 dev
+> tsx server/index.ts
+
+Using PostgreSQL database
+Database migrations completed successfully
+3:32:06 AM [express] HTTPS Server running on https://localhost:5001
+3:32:06 AM [express] HTTPS Server running on https://192.168.1.210:5001
+3:32:30 AM [vite] (client) Pre-transform error: Transform failed with 3 errors:
+/Users/shivarajchallapalli/codebase/GroceryManager/client/src/App.tsx:21:6: ERROR: The symbol "inWebWorker" has already been declared
+/Users/shivarajchallapalli/codebase/GroceryManager/client/src/App.tsx:23:4: ERROR: The symbol "prevRefreshReg" has already been declared
+/Users/shivarajchallapalli/codebase/GroceryManager/client/src/App.tsx:24:4: ERROR: The symbol "prevRefreshSig" has already been declared
+  Plugin: vite:esbuild
+  File: /Users/shivarajchallapalli/codebase/GroceryManager/client/src/App.tsx:21:6
+  
+  The symbol "inWebWorker" has already been declared
+  19 |  
+  20 |  var _s2 = $RefreshSig$();import * as RefreshRuntime from "/@react-refresh";
+  21 |  const inWebWorker = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
+     |        ^
+  22 |  
+  23 |  let prevRefreshReg;
+  
+  The symbol "prevRefreshReg" has already been declared
+  21 |  const inWebWorker = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
+  22 |  
+  23 |  let prevRefreshReg;
+     |      ^
+  24 |  let prevRefreshSig;
+  25 |  
+  
+  The symbol "prevRefreshSig" has already been declared
+  22 |  
+  23 |  let prevRefreshReg;
+  24 |  let prevRefreshSig;
+     |      ^
+  25 |  
+  26 |  if (import.meta.hot && !inWebWorker) {
+  
+3:32:30 AM [vite] Internal server error: Transform failed with 3 errors:
+/Users/shivarajchallapalli/codebase/GroceryManager/client/src/App.tsx:21:6: ERROR: The symbol "inWebWorker" has already been declared
+/Users/shivarajchallapalli/codebase/GroceryManager/client/src/App.tsx:23:4: ERROR: The symbol "prevRefreshReg" has already been declared
+/Users/shivarajchallapalli/codebase/GroceryManager/client/src/App.tsx:24:4: ERROR: The symbol "prevRefreshSig" has already been declared
+  Plugin: vite:esbuild
+  File: /Users/shivarajchallapalli/codebase/GroceryManager/client/src/App.tsx:21:6
+  
+  The symbol "inWebWorker" has already been declared
+  19 |  
+  20 |  var _s2 = $RefreshSig$();import * as RefreshRuntime from "/@react-refresh";
+  21 |  const inWebWorker = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
+     |        ^
+  22 |  
+  23 |  let prevRefreshReg;
+  
+  The symbol "prevRefreshReg" has already been declared
+  21 |  const inWebWorker = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
+  22 |  
+  23 |  let prevRefreshReg;
+     |      ^
+  24 |  let prevRefreshSig;
+  25 |  
+  
+  The symbol "prevRefreshSig" has already been declared
+  22 |  
+  23 |  let prevRefreshReg;
+  24 |  let prevRefreshSig;
+     |      ^
+  25 |  
+  26 |  if (import.meta.hot && !inWebWorker) {
+  
+      at failureErrorWithLog (/Users/shivarajchallapalli/codebase/GroceryManager/node_modules/esbuild/lib/main.js:1477:15)
+      at /Users/shivarajchallapalli/codebase/GroceryManager/node_modules/esbuild/lib/main.js:756:50
+      at responseCallbacks.<computed> (/Users/shivarajchallapalli/codebase/GroceryManager/node_modules/esbuild/lib/main.js:623:9)
+      at handleIncomingPacket (/Users/shivarajchallapalli/codebase/GroceryManager/node_modules/esbuild/lib/main.js:678:12)
+      at Socket.readFromStdout (/Users/shivarajchallapalli/codebase/GroceryManager/node_modules/esbuild/lib/main.js:601:7)
+      at Socket.emit (node:events:507:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+3:32:34 AM [vite] Internal server error: Transform failed with 3 errors:
+/Users/shivarajchallapalli/codebase/GroceryManager/client/src/App.tsx:21:6: ERROR: The symbol "inWebWorker" has already been declared
+/Users/shivarajchallapalli/codebase/GroceryManager/client/src/App.tsx:23:4: ERROR: The symbol "prevRefreshReg" has already been declared
+/Users/shivarajchallapalli/codebase/GroceryManager/client/src/App.tsx:24:4: ERROR: The symbol "prevRefreshSig" has already been declared
+  Plugin: vite:esbuild
+  File: /Users/shivarajchallapalli/codebase/GroceryManager/client/src/App.tsx:21:6
+  
+  The symbol "inWebWorker" has already been declared
+  19 |  
+  20 |  var _s2 = $RefreshSig$();import * as RefreshRuntime from "/@react-refresh";
+  21 |  const inWebWorker = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
+     |        ^
+  22 |  
+  23 |  let prevRefreshReg;
+  
+  The symbol "prevRefreshReg" has already been declared
+  21 |  const inWebWorker = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
+  22 |  
+  23 |  let prevRefreshReg;
+     |      ^
+  24 |  let prevRefreshSig;
+  25 |  
+  
+  The symbol "prevRefreshSig" has already been declared
+  22 |  
+  23 |  let prevRefreshReg;
+  24 |  let prevRefreshSig;
+     |      ^
+  25 |  
+  26 |  if (import.meta.hot && !inWebWorker) {
+  
+      at failureErrorWithLog (/Users/shivarajchallapalli/codebase/GroceryManager/node_modules/esbuild/lib/main.js:1477:15)
+      at /Users/shivarajchallapalli/codebase/GroceryManager/node_modules/esbuild/lib/main.js:756:50
+      at responseCallbacks.<computed> (/Users/shivarajchallapalli/codebase/GroceryManager/node_modules/esbuild/lib/main.js:623:9)
+      at handleIncomingPacket (/Users/shivarajchallapalli/codebase/GroceryManager/node_modules/esbuild/lib/main.js:678:12)
+      at Socket.readFromStdout (/Users/shivarajchallapalli/codebase/GroceryManager/node_modules/esbuild/lib/main.js:601:7)
+      at Socket.emit (node:events:507:28)
+      at addChunk (node:internal/streams/readable:559:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+      at Readable.push (node:internal/streams/readable:390:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)

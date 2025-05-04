@@ -1,0 +1,13 @@
+{
+  "out": "./migrations",
+  "schema": "../shared/schema.ts",
+  "dialect": "postgresql",
+  "dbCredentials": {
+    "host": "localhost",
+    "port": 5432,
+    "database": "grocerymanager",
+    "user": "postgres",
+    "password": "postgres",
+    "ssl": false
+  }
+} 

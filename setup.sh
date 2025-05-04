@@ -18,11 +18,11 @@ if ! command -v psql &> /dev/null; then
     exit 1
 fi
 
-# Install dependencies
-echo "Installing dependencies..."
-rm -rf node_modules
-rm -f package-lock.json
-npm install
+# Check if PostgreSQL service is running
+if ! pg_isready &> /dev/null; then
+    echo "PostgreSQL service is not running. Please start the PostgreSQL service."
+    exit 1
+fi
 
 # Check if DATABASE_URL is set
 if [ -z "$DATABASE_URL" ]; then
@@ -32,9 +32,43 @@ if [ -z "$DATABASE_URL" ]; then
     exit 1
 fi
 
+# Extract database name from DATABASE_URL in a macOS-compatible way
+DB_NAME=$(echo "$DATABASE_URL" | sed -E 's/^.*\/([^/]+)$/\1/')
+
+if [ -z "$DB_NAME" ]; then
+    echo "Error: Could not extract database name from DATABASE_URL"
+    echo "Please check your DATABASE_URL format"
+    exit 1
+fi
+
+# Check if database exists
+if ! psql -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
+    echo "Database $DB_NAME does not exist. Creating database..."
+    # Create the database
+    createdb "$DB_NAME"
+    if [ $? -ne 0 ]; then
+        echo "Failed to create database $DB_NAME"
+        exit 1
+    fi
+    echo "Database $DB_NAME created successfully"
+fi
+
+# Install dependencies
+echo "Installing dependencies..."
+rm -rf node_modules
+rm -f package-lock.json
+npm install
+
 # Run database migrations
 echo "Running database migrations..."
 npm run migrate
+
+# Verify database setup
+echo "Verifying database setup..."
+if ! npm run db:push; then
+    echo "Database setup verification failed"
+    exit 1
+fi
 
 # Build the application
 echo "Building the application..."
