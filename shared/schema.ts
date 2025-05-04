@@ -78,6 +78,7 @@ export const shoppingItems = pgTable('shopping_items', {
   quantity: text('quantity').notNull(),
   unit: text('unit').notNull(),
   category: text('category'),
+  storage_location: text('storage_location'),
   checked: boolean('checked').default(false),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow()

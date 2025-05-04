@@ -370,6 +370,83 @@ function parseIngredientText(text: string): { name: string, quantity: string, un
   };
 }
 
+// Enhanced ingredient categorization and storage location system
+const ingredientCategories = {
+  // Produce categories
+  'Produce': {
+    keywords: ['apple', 'banana', 'orange', 'lettuce', 'tomato', 'carrot', 'potato', 'onion', 'garlic', 'pepper', 'cucumber', 'zucchini', 'broccoli', 'cauliflower', 'spinach', 'kale', 'celery', 'mushroom', 'avocado', 'lemon', 'lime', 'grape', 'berry', 'melon', 'peach', 'plum', 'pear', 'kiwi', 'mango', 'pineapple'],
+    storage: 'Refrigerator - Crisper Drawer'
+  },
+  'Herbs': {
+    keywords: ['basil', 'parsley', 'cilantro', 'thyme', 'rosemary', 'sage', 'oregano', 'mint', 'dill', 'chives'],
+    storage: 'Refrigerator - Crisper Drawer (in water)'
+  },
+  // Dairy categories
+  'Dairy': {
+    keywords: ['milk', 'cheese', 'yogurt', 'butter', 'cream', 'sour cream', 'cottage cheese', 'cream cheese', 'parmesan', 'mozzarella', 'cheddar', 'feta', 'ricotta'],
+    storage: 'Refrigerator - Dairy Section'
+  },
+  // Meat categories
+  'Meat': {
+    keywords: ['chicken', 'beef', 'pork', 'lamb', 'turkey', 'bacon', 'sausage', 'ham', 'steak', 'ground beef', 'ribs', 'chops'],
+    storage: 'Refrigerator - Meat Drawer'
+  },
+  'Seafood': {
+    keywords: ['fish', 'salmon', 'tuna', 'shrimp', 'crab', 'lobster', 'mussel', 'clam', 'oyster', 'scallop', 'cod', 'tilapia'],
+    storage: 'Refrigerator - Meat Drawer'
+  },
+  // Pantry categories
+  'Pantry': {
+    keywords: ['rice', 'pasta', 'flour', 'sugar', 'salt', 'pepper', 'oil', 'vinegar', 'beans', 'lentils', 'cereal', 'oatmeal', 'bread', 'crackers', 'cookies', 'chips', 'nuts', 'seeds', 'coffee', 'tea', 'honey', 'jam', 'peanut butter', 'canned', 'soup', 'sauce', 'spice', 'herb'],
+    storage: 'Pantry'
+  },
+  'Baking': {
+    keywords: ['baking powder', 'baking soda', 'yeast', 'chocolate', 'cocoa', 'vanilla', 'cinnamon', 'nutmeg', 'allspice', 'cloves', 'ginger', 'cardamom'],
+    storage: 'Pantry - Baking Section'
+  },
+  'Frozen': {
+    keywords: ['frozen', 'ice cream', 'popsicle', 'frozen fruit', 'frozen vegetable', 'frozen meal', 'frozen pizza'],
+    storage: 'Freezer'
+  },
+  'Beverages': {
+    keywords: ['juice', 'soda', 'water', 'beer', 'wine', 'liquor', 'sparkling water', 'sports drink', 'energy drink'],
+    storage: 'Refrigerator - Beverage Section'
+  },
+  'Condiments': {
+    keywords: ['ketchup', 'mustard', 'mayonnaise', 'relish', 'hot sauce', 'soy sauce', 'worcestershire', 'bbq sauce', 'salad dressing', 'salsa', 'guacamole', 'hummus'],
+    storage: 'Refrigerator - Door'
+  },
+  'Other': {
+    keywords: [],
+    storage: 'Pantry'
+  }
+};
+
+// Enhanced ingredient categorization function
+function categorizeIngredient(name: string): { category: string, storage: string } {
+  const lowerName = name.toLowerCase();
+  
+  // First, check for exact matches in category keywords
+  for (const [category, data] of Object.entries(ingredientCategories)) {
+    if (data.keywords.some(keyword => lowerName.includes(keyword))) {
+      return { category, storage: data.storage };
+    }
+  }
+  
+  // If no exact match, try partial matches with higher confidence
+  for (const [category, data] of Object.entries(ingredientCategories)) {
+    if (data.keywords.some(keyword => {
+      const words = lowerName.split(' ');
+      return words.some(word => keyword.includes(word) || word.includes(keyword));
+    })) {
+      return { category, storage: data.storage };
+    }
+  }
+  
+  // Default to 'Other' if no match found
+  return { category: 'Other', storage: 'Pantry' };
+}
+
 // Recipe functions
 export const storage = {
   // Recipe operations
@@ -1174,42 +1251,19 @@ export const storage = {
       }
       
       try {
+        const { category, storage } = categorizeIngredient(ingredient.name);
         await this.createShoppingItem({
           name: ingredient.name,
           quantity: ingredient.quantity || '1',
           unit: ingredient.unit || 'unit',
-          category: this.categorizeIngredient(ingredient.name)
+          category,
+          storage_location: storage
         });
       } catch (error) {
         console.error(`Error adding ingredient ${ingredient.name} to shopping list:`, error);
         // Continue with other ingredients even if one fails
       }
     }
-  },
-
-  // Helper function to categorize ingredients
-  categorizeIngredient(ingredientName: string): string {
-    const lowerName = ingredientName.toLowerCase();
-    
-    // Simple categorization rules
-    if (lowerName.includes("milk") || lowerName.includes("cheese") || lowerName.includes("yogurt")) {
-      return "Dairy";
-    } else if (lowerName.includes("tomato") || lowerName.includes("lettuce") || lowerName.includes("carrot") || 
-               lowerName.includes("onion") || lowerName.includes("pepper") || lowerName.includes("cucumber")) {
-      return "Produce";
-    } else if (lowerName.includes("chicken") || lowerName.includes("beef") || lowerName.includes("pork") || 
-               lowerName.includes("fish") || lowerName.includes("meat")) {
-      return "Meat";
-    } else if (lowerName.includes("flour") || lowerName.includes("sugar") || lowerName.includes("rice") || 
-               lowerName.includes("pasta") || lowerName.includes("oil") || lowerName.includes("vinegar")) {
-      return "Pantry";
-    } else if (lowerName.includes("salt") || lowerName.includes("pepper") || lowerName.includes("oregano") || 
-               lowerName.includes("basil") || lowerName.includes("spice") || lowerName.includes("herb")) {
-      return "Spices";
-    }
-    
-    // Default category
-    return "Other";
   },
 
   async createInventoryItemFromBarcode(barcode: string): Promise<InventoryItem | null> {
