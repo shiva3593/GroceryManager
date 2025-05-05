@@ -51,7 +51,6 @@ function App() {
         <Header activeTab={activeTab} setActiveTab={setActiveTab} />
         <Router />
         <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
-        {/* NetworkInfo removed as requested */}
       </div>
       <Toaster />
     </QueryClientProvider>

@@ -59,6 +59,12 @@ rm -rf node_modules
 rm -f package-lock.json
 npm install
 
+# Generate SSL certificates
+echo "Generating SSL certificates..."
+mkdir -p certs
+openssl req -x509 -newkey rsa:2048 -keyout certs/key.pem -out certs/cert.pem -days 365 -nodes -subj "/CN=localhost"
+echo "SSL certificates generated successfully"
+
 # Run database migrations
 echo "Running database migrations..."
 npm run migrate
@@ -81,5 +87,35 @@ echo "  - https://192.168.1.210:5001"
 echo ""
 echo "Starting development server..."
 
+# Check if ngrok is installed
+if ! command -v ngrok &> /dev/null; then
+    echo "Warning: ngrok is not installed. To expose your local server to the internet, please install ngrok:"
+    echo "  brew install ngrok (on macOS)"
+    echo "  or visit https://ngrok.com/download"
+else
+    echo "Starting ngrok tunnel..."
+    # Start ngrok in the background
+    ngrok http https://localhost:5001 > /dev/null 2>&1 &
+    NGROK_PID=$!
+    
+    # Wait a moment for ngrok to start
+    sleep 2
+    
+    # Get the ngrok URL
+    NGROK_URL=$(curl -s http://localhost:4040/api/tunnels | grep -o '"public_url":"[^"]*' | grep -o 'https://[^"]*')
+    
+    if [ ! -z "$NGROK_URL" ]; then
+        echo "ngrok tunnel established!"
+        echo "Your application is now available at: $NGROK_URL"
+    else
+        echo "Failed to establish ngrok tunnel. Please check ngrok configuration."
+    fi
+fi
+
 # Start the development server
 npm run dev
+
+# Cleanup ngrok process when the script exits
+if [ ! -z "$NGROK_PID" ]; then
+    trap "kill $NGROK_PID" EXIT
+fi
