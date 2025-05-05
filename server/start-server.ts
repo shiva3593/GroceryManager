@@ -6,7 +6,6 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initializeDatabase } from './index';
-import { spawn } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,26 +48,6 @@ async function startServer() {
   httpsServer.listen(PORT, "0.0.0.0", () => {
     console.log(`HTTPS Server running on https://localhost:${PORT}`);
     console.log(`HTTPS Server running on https://192.168.1.210:${PORT}`);
-    
-    // Start Cloudflare tunnel
-    const tunnel = spawn('cloudflared', ['tunnel', '--url', `https://localhost:${PORT}`]);
-
-    tunnel.stdout.on('data', (data) => {
-      console.log('Tunnel URL:', data.toString().trim());
-    });
-
-    tunnel.stderr.on('data', (data) => {
-      const output = data.toString().trim();
-      if (output.includes('https://')) {
-        console.log('Public URL:', output.match(/https:\/\/[^\s]+/)[0]);
-      } else {
-        console.error('Tunnel Error:', output);
-      }
-    });
-
-    tunnel.on('close', (code) => {
-      console.log(`Tunnel process exited with code ${code}`);
-    });
   }).on('error', (e: any) => {
     console.error(`Failed to start server: ${e.message}`);
     process.exit(1);
