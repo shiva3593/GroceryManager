@@ -2,6 +2,7 @@
 
 # Create cert directory if it doesn't exist
 mkdir -p cert
+mkdir -p certs
 
 # Create a configuration file for the certificate
 cat > cert/openssl.cnf <<-EOF
@@ -25,6 +26,7 @@ subjectAltName = @alt_names
 [alt_names]
 DNS.1 = localhost
 DNS.2 = 192.168.1.210
+DNS.3 = *.trycloudflare.com
 IP.1 = 127.0.0.1
 IP.2 = 192.168.1.210
 EOF
@@ -37,6 +39,10 @@ openssl req -new -key cert/localhost-key.pem -out cert/localhost.csr -config cer
 
 # Generate self-signed certificate with extensions
 openssl x509 -req -days 365 -in cert/localhost.csr -signkey cert/localhost-key.pem -out cert/localhost.pem -extensions v3_req -extfile cert/openssl.cnf
+
+# Copy certificates to the correct location
+cp cert/localhost-key.pem certs/key.pem
+cp cert/localhost.pem certs/cert.pem
 
 # Clean up
 rm cert/localhost.csr cert/openssl.cnf

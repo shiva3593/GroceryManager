@@ -1,0 +1,78 @@
+import express from 'express';
+import { registerRoutes } from './routes';
+import https from 'https';
+import http from 'http';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { initializeDatabase } from './index';
+import { spawn } from 'child_process';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+async function startServer() {
+  // Initialize database
+  await initializeDatabase();
+
+  // Create Express app
+  const app = express();
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: false }));
+
+  // Register routes
+  const server = await registerRoutes(app);
+
+  // Load SSL certificates
+  const options = {
+    key: fs.readFileSync(path.join(__dirname, '../certs/key.pem')),
+    cert: fs.readFileSync(path.join(__dirname, '../certs/cert.pem'))
+  };
+
+  // Start both HTTP and HTTPS servers
+  const PORT = 5001;
+  const HTTP_PORT = 5000;
+
+  // Create HTTPS server
+  const httpsServer = https.createServer(options, app);
+  
+  // Create HTTP server
+  const httpServer = http.createServer(app);
+
+  // Start HTTP server
+  httpServer.listen(HTTP_PORT, "0.0.0.0", () => {
+    console.log(`HTTP Server running on http://localhost:${HTTP_PORT}`);
+    console.log(`HTTP Server running on http://192.168.1.210:${HTTP_PORT}`);
+  });
+
+  // Start HTTPS server
+  httpsServer.listen(PORT, "0.0.0.0", () => {
+    console.log(`HTTPS Server running on https://localhost:${PORT}`);
+    console.log(`HTTPS Server running on https://192.168.1.210:${PORT}`);
+    
+    // Start Cloudflare tunnel
+    const tunnel = spawn('cloudflared', ['tunnel', '--url', `https://localhost:${PORT}`]);
+
+    tunnel.stdout.on('data', (data) => {
+      console.log('Tunnel URL:', data.toString().trim());
+    });
+
+    tunnel.stderr.on('data', (data) => {
+      const output = data.toString().trim();
+      if (output.includes('https://')) {
+        console.log('Public URL:', output.match(/https:\/\/[^\s]+/)[0]);
+      } else {
+        console.error('Tunnel Error:', output);
+      }
+    });
+
+    tunnel.on('close', (code) => {
+      console.log(`Tunnel process exited with code ${code}`);
+    });
+  }).on('error', (e: any) => {
+    console.error(`Failed to start server: ${e.message}`);
+    process.exit(1);
+  });
+}
+
+startServer().catch(console.error); 
