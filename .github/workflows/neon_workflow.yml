@@ -109,12 +109,11 @@ jobs:
       - name: Install dependencies
         run: |
           npm install --no-audit --no-fund
+          npm install -D vite @vitejs/plugin-react
           npm install -g neonctl
         
       - name: Build
-        run: |
-          npm install -g vite
-          npm run build
+        run: npm run build
 
       - name: Deploy to Neon
         run: |
