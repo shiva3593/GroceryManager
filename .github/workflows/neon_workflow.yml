@@ -98,4 +98,8 @@ jobs:
         with:
           project_id: ${{ vars.NEON_PROJECT_ID }}
           api_key: ${{ secrets.NEON_API_KEY }}
-          branch_name: neon_deploy 
+          branch_name: neon_deploy
+          port: 5002
+          env:
+            DATABASE_URL: ${{ secrets.DATABASE_URL }}
+            PORT: 5002 
