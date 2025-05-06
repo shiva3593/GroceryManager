@@ -110,17 +110,18 @@ jobs:
       - name: Install dependencies
         run: |
           npm install --no-audit --no-fund
-          npm install -g neonctl
+          npm install -D vite @vitejs/plugin-react
+        
+      - name: Build
+        run: npm run build
         
       - name: Deploy to Neon
-        run: |
-          neonctl deploy \
-            --project-id ${{ vars.NEON_PROJECT_ID }} \
-            --api-key ${{ secrets.NEON_API_KEY }} \
-            --branch ${{ github.ref_name }} \
-            --env DATABASE_URL=${{ needs.create_neon_branch.outputs.db_url_with_pooler }} \
-            --env NODE_ENV=production \
-            --env PORT=5002 \
-            --build-command "npm install && npm run build" \
-            --start-command "NODE_ENV=production node dist/server/index.js" \
-            --root-dir "." 
+        uses: neondatabase/github-actions/deploy-to-neon@v1
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          branch: ${{ github.ref_name }}
+          env: |
+            DATABASE_URL=${{ needs.create_neon_branch.outputs.db_url_with_pooler }}
+            NODE_ENV=production
+            PORT=5002 
