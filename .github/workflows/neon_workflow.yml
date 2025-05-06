@@ -110,7 +110,7 @@ jobs:
         run: |
           npm install
           npm install -D vite typescript @types/node
-          npm install -g @neondatabase/cli
+          npm install -g neonctl
         
       - name: Build
         run: npm run build
