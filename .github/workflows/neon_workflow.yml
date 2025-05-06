@@ -107,13 +107,13 @@ jobs:
           cache: 'npm'
           
       - name: Install dependencies
-        run: npm install
+        run: |
+          npm install
+          npm install -D vite typescript @types/node
+          npm install -g @neondatabase/cli
         
       - name: Build
         run: npm run build
-
-      - name: Install Neon CLI
-        run: npm install -g @neondatabase/cli
 
       - name: Deploy to Neon
         run: |
