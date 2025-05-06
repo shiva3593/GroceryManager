@@ -122,4 +122,5 @@ jobs:
             --env NODE_ENV=production \
             --env PORT=5002 \
             --build-command "npm install && npm run build" \
-            --start-command "npm start" 
+            --start-command "NODE_ENV=production node dist/server/index.js" \
+            --root-dir "." 
