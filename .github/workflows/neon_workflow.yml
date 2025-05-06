@@ -112,7 +112,9 @@ jobs:
           npm install -g neonctl
         
       - name: Build
-        run: npm run build
+        run: |
+          npm install -g vite
+          npm run build
 
       - name: Deploy to Neon
         run: |
