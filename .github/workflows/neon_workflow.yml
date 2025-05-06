@@ -109,12 +109,8 @@ jobs:
       - name: Install dependencies
         run: |
           npm install --no-audit --no-fund
-          npm install -D vite @vitejs/plugin-react
           npm install -g neonctl
         
-      - name: Build
-        run: npm run build
-
       - name: Deploy to Neon
         run: |
           neonctl deploy \
@@ -122,4 +118,5 @@ jobs:
             --api-key ${{ secrets.NEON_API_KEY }} \
             --branch ${{ github.ref_name }} \
             --env DATABASE_URL=${{ needs.create_neon_branch.outputs.db_url_with_pooler }} \
-            --env NODE_ENV=production 
+            --env NODE_ENV=production \
+            --build-command "npm install && npm run build" 
