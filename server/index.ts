@@ -1,11 +1,8 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import https from 'https';
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { constants } from 'crypto';
 import { db, pool } from './db';
 import cors from 'cors';
 import { env } from './config/env';
@@ -113,30 +110,24 @@ async function initializeDatabase() {
   if (env.NODE_ENV === "development") {
     await setupVite(app, server);
   } else {
-    serveStatic(app);
+    // Serve static files from the dist directory in production
+    app.use(express.static(path.join(__dirname, '../../dist/client')));
+    
+    // Handle client-side routing
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(__dirname, '../../dist/client/index.html'));
+    });
   }
 
   // Start server
   await initializeDatabase();
 
-  // Load SSL certificates
-  const options = {
-    key: fs.readFileSync(path.join(__dirname, '../certs/key.pem')),
-    cert: fs.readFileSync(path.join(__dirname, '../certs/cert.pem'))
-  };
-
-  // Start HTTPS server
-  const httpsServer = https.createServer({
-    ...options,
-    keepAliveTimeout: 60000, // 60 seconds
-  }, app);
-
-  httpsServer.listen(env.PORT, "0.0.0.0", () => {
-    log(`HTTPS Server running on https://localhost:${env.PORT}`);
-    log(`HTTPS Server running on https://192.168.1.210:${env.PORT}`);
+  const port = env.PORT || 5002;
+  app.listen(port, "0.0.0.0", () => {
+    log(`Server running on port ${port}`);
   }).on('error', (e: any) => {
     if (e.code === 'EADDRINUSE') {
-      log(`Error: Port ${env.PORT} is already in use. Please make sure no other instance of the server is running.`);
+      log(`Error: Port ${port} is already in use. Please make sure no other instance of the server is running.`);
       process.exit(1);
     }
   });

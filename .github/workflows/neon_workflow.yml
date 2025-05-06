@@ -36,30 +36,18 @@ jobs:
       db_url_with_pooler: ${{ steps.create_neon_branch_encode.outputs.db_url_with_pooler }}
     needs: setup
     if: |
-      (github.event_name == 'pull_request' && (
+      github.event_name == 'pull_request' && (
       github.event.action == 'synchronize'
       || github.event.action == 'opened'
-      || github.event.action == 'reopened'))
-      || (github.event_name == 'push' && github.ref == 'refs/heads/neon_deploy')
+      || github.event.action == 'reopened')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm install
-
       - name: Create Neon Branch
         id: create_neon_branch
         uses: neondatabase/create-branch-action@v5
         with:
           project_id: ${{ vars.NEON_PROJECT_ID }}
-          branch_name: ${{ github.event_name == 'pull_request' && format('preview/pr-{0}-{1}', github.event.number, needs.setup.outputs.branch) || 'neon_deploy' }}
+          branch_name: preview/pr-${{ github.event.number }}-${{ needs.setup.outputs.branch }}
           api_key: ${{ secrets.NEON_API_KEY }}
 
       - name: Run Migrations
@@ -68,7 +56,6 @@ jobs:
           DATABASE_URL: "${{ steps.create_neon_branch.outputs.db_url_with_pooler }}"
 
       - name: Post Schema Diff Comment to PR
-        if: github.event_name == 'pull_request'
         uses: neondatabase/schema-diff-action@v1
         with:
           project_id: ${{ vars.NEON_PROJECT_ID }}
@@ -97,6 +84,7 @@ jobs:
     env:
       DATABASE_URL: ${{ needs.create_neon_branch.outputs.db_url_with_pooler }}
       NODE_ENV: production
+      PORT: 5002
     steps:
       - uses: actions/checkout@v3
       
@@ -119,4 +107,6 @@ jobs:
             --branch ${{ github.ref_name }} \
             --env DATABASE_URL=${{ needs.create_neon_branch.outputs.db_url_with_pooler }} \
             --env NODE_ENV=production \
-            --build-command "npm install && npm run build" 
+            --env PORT=5002 \
+            --build-command "npm install && npm run build" \
+            --start-command "npm start" 
