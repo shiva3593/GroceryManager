@@ -79,9 +79,10 @@ jobs:
     name: Deploy to Neon
     if: github.ref == 'refs/heads/neon_deploy'
     runs-on: ubuntu-latest
+    environment: production
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      PORT: 5002
+      NODE_ENV: production
     steps:
       - uses: actions/checkout@v3
       
@@ -89,6 +90,7 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '20'
+          cache: 'npm'
           
       - name: Install dependencies
         run: npm ci
@@ -97,9 +99,11 @@ jobs:
         run: npm run build
         
       - name: Deploy to Neon
-        uses: neondatabase/deploy-action@v2
+        uses: neondatabase/github-actions/deploy-to-neon@v1
         with:
           project_id: ${{ vars.NEON_PROJECT_ID }}
           api_key: ${{ secrets.NEON_API_KEY }}
-          branch_name: neon_deploy
-          port: 5002 
+          branch_name: ${{ github.ref_name }}
+          environment_variables: |
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            NODE_ENV=production 
