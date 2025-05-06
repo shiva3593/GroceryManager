@@ -79,6 +79,9 @@ jobs:
     name: Deploy to Neon
     if: github.ref == 'refs/heads/neon_deploy'
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PORT: 5002
     steps:
       - uses: actions/checkout@v3
       
@@ -99,7 +102,4 @@ jobs:
           project_id: ${{ vars.NEON_PROJECT_ID }}
           api_key: ${{ secrets.NEON_API_KEY }}
           branch_name: neon_deploy
-          port: 5002
-          env:
-            DATABASE_URL: ${{ secrets.DATABASE_URL }}
-            PORT: 5002 
+          port: 5002 
