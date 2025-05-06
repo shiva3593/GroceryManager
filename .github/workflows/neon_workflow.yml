@@ -121,6 +121,8 @@ jobs:
           project_id: ${{ vars.NEON_PROJECT_ID }}
           api_key: ${{ secrets.NEON_API_KEY }}
           branch: ${{ github.ref_name }}
+          build-command: "npm run build"
+          start-command: "NODE_ENV=production node dist/server/index.js"
           env: |
             DATABASE_URL=${{ needs.create_neon_branch.outputs.db_url_with_pooler }}
             NODE_ENV=production
