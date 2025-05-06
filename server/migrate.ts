@@ -2,9 +2,20 @@ import { pool } from './db';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import * as dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Debug environment variables
+console.log('Migration script environment:', {
+  NODE_ENV: process.env.NODE_ENV,
+  DATABASE_URL_EXISTS: !!process.env.DATABASE_URL,
+  DATABASE_URL_STARTS_WITH: process.env.DATABASE_URL?.substring(0, 20) + '...'
+});
 
 async function runMigrations() {
   const client = await pool.connect();

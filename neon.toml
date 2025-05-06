@@ -1,0 +1,19 @@
+[project]
+name = "grocery-manager"
+version = "1.0.0"
+
+[build]
+command = "npm install && npm run build"
+output = "dist"
+
+[deploy]
+command = "npm start"
+port = 5001
+healthcheckPath = "/api/health"
+healthcheckTimeout = 100
+restartPolicyType = "on-failure"
+restartPolicyMaxRetries = 10
+
+[env]
+NODE_ENV = "production"
+PORT = "5001" 

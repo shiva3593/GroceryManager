@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { constants } from 'crypto';
 import { db, pool } from './db';
 import cors from 'cors';
+import { env } from './config/env';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -71,25 +72,23 @@ app.use((req, res, next) => {
   next();
 });
 
+// Add health check endpoint
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // Initialize database
 async function initializeDatabase() {
   try {
-    if (!process.env.DATABASE_URL?.includes('postgresql://')) {
-      throw new Error("DATABASE_URL must be a PostgreSQL connection string");
-    }
+    console.log('Using Neon PostgreSQL database');
     
-    console.log('Using PostgreSQL database');
-    const client = await pool.connect();
+    // Test database connection
     try {
-      const migrationFile = path.join(__dirname, 'migrations/001_initial_schema.sql');
-      const migration = fs.readFileSync(migrationFile, 'utf8');
-      await client.query(migration);
-      console.log('Database migrations completed successfully');
+      const result = await pool.query('SELECT NOW()');
+      console.log('Successfully connected to Neon database:', result.rows[0].now);
     } catch (error) {
-      console.error('Error running migrations:', error);
+      console.error('Error testing database connection:', error);
       throw error;
-    } finally {
-      client.release();
     }
   } catch (error) {
     console.error('Error initializing database:', error);
@@ -111,7 +110,7 @@ async function initializeDatabase() {
   });
 
   // Setup Vite in development or serve static files in production
-  if (app.get("env") === "development") {
+  if (env.NODE_ENV === "development") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
@@ -127,20 +126,18 @@ async function initializeDatabase() {
   };
 
   // Start HTTPS server
-  const PORT = parseInt(process.env.PORT || '5001', 10);
   const httpsServer = https.createServer({
     ...options,
     keepAliveTimeout: 60000, // 60 seconds
   }, app);
 
-  httpsServer.listen(PORT, "0.0.0.0", () => {
-    log(`HTTPS Server running on https://localhost:${PORT}`);
-    log(`HTTPS Server running on https://192.168.1.210:${PORT}`);
+  httpsServer.listen(env.PORT, "0.0.0.0", () => {
+    log(`HTTPS Server running on https://localhost:${env.PORT}`);
+    log(`HTTPS Server running on https://192.168.1.210:${env.PORT}`);
   }).on('error', (e: any) => {
     if (e.code === 'EADDRINUSE') {
-      const nextPort = PORT + 1;
-      log(`Port ${PORT} is busy, trying ${nextPort}...`);
-      httpsServer.listen(nextPort, "0.0.0.0");
+      log(`Error: Port ${env.PORT} is already in use. Please make sure no other instance of the server is running.`);
+      process.exit(1);
     }
   });
 })();

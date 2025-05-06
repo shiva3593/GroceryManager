@@ -1,17 +1,59 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import * as schema from '@shared/schema';
+import { env } from './config/env';
 
-// Get database URL from environment variable or use default
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/grocerymanager';
-
-// Create a new pool using the connection string
+// Configure connection pool with Neon-specific settings
 const pool = new Pool({
-  connectionString: DATABASE_URL,
+  connectionString: env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  },
+  max: 20, // Maximum number of clients in the pool
+  idleTimeoutMillis: 30000, // How long a client is allowed to remain idle before being closed
+  connectionTimeoutMillis: 2000, // How long to wait for a connection
+  maxUses: 7500, // Close a connection after it has been used this many times
 });
 
-// Create a drizzle instance with the pool and schema
-export const db = drizzle(pool, { schema });
+// Add error handling for the pool
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle client', err);
+  process.exit(-1);
+});
 
-// Export the pool for direct access if needed
-export { pool }; 
+// Add connection event handlers
+pool.on('connect', () => {
+  console.log('New client connected to Neon database');
+});
+
+pool.on('acquire', () => {
+  console.log('Client acquired from pool');
+});
+
+pool.on('remove', () => {
+  console.log('Client removed from pool');
+});
+
+// Function to test database connection
+async function testConnection() {
+  try {
+    const client = await pool.connect();
+    try {
+      const result = await client.query('SELECT NOW()');
+      console.log('Successfully connected to Neon database:', result.rows[0].now);
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Error testing database connection:', error);
+    throw error;
+  }
+}
+
+// Initialize drizzle with the pool
+const db = drizzle(pool);
+
+// Export both the pool and drizzle instance
+export { pool, db };
+
+// Test connection on startup
+testConnection().catch(console.error); 
