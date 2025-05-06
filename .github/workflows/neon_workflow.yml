@@ -108,8 +108,7 @@ jobs:
           
       - name: Install dependencies
         run: |
-          npm install
-          npm install -D vite typescript @types/node
+          npm ci
           npm install -g neonctl
         
       - name: Build
