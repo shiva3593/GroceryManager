@@ -109,15 +109,13 @@ jobs:
       - name: Install dependencies
         run: |
           npm install --no-audit --no-fund
-          npm install -g neonctl
+          npm install -D vite @vitejs/plugin-react
         
       - name: Build
-        run: |
-          npm install -D vite @vitejs/plugin-react
-          npm run build
+        run: npm run build
 
       - name: Deploy to Neon
-        uses: neondatabase/deploy-action@v1
+        uses: neondatabase/github-actions/deploy-to-neon@v1
         with:
           project_id: ${{ vars.NEON_PROJECT_ID }}
           api_key: ${{ secrets.NEON_API_KEY }}
