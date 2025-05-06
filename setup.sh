@@ -96,17 +96,43 @@ launch_bore() {
     # Ensure bore is in PATH
     source "$HOME/.cargo/env"
     
-    # Check for existing bore processes and kill them
-    echo "Checking for existing bore tunnels..."
-    pkill -f "bore local" || true
-    sleep 2  # Wait for processes to clean up
+    # Function to check if server is healthy
+    check_server_health() {
+        curl -s -f -k https://localhost:5001 > /dev/null
+        return $?
+    }
     
-    # Check if port 5001 is in use
-    if lsof -i :5001 > /dev/null 2>&1; then
-        echo "Port 5001 is still in use. Attempting to free it..."
-        lsof -ti :5001 | xargs kill -9 2>/dev/null || true
-        sleep 2  # Wait for port to be freed
-    fi
+    # Function to check if bore tunnel is healthy
+    check_bore_health() {
+        curl -s -f -k https://bore.pub:5001 > /dev/null
+        return $?
+    }
+    
+    # Function to start bore tunnel
+    start_bore_tunnel() {
+        echo "Starting bore tunnel..."
+        bore local 5001 --to bore.pub --port 5001 &
+        BORE_PID=$!
+        sleep 3  # Wait for tunnel to establish
+        
+        # Verify tunnel is running
+        if ! ps -p $BORE_PID > /dev/null; then
+            echo "Failed to start bore tunnel"
+            return 1
+        fi
+        
+        # Wait for tunnel to be healthy
+        for i in {1..10}; do
+            if check_bore_health; then
+                echo "Bore tunnel is healthy"
+                return 0
+            fi
+            sleep 1
+        done
+        
+        echo "Bore tunnel failed health check"
+        return 1
+    }
     
     # Start the local server in the background
     echo "Starting local server..."
@@ -119,7 +145,7 @@ launch_bore() {
     # Wait for the server to start
     echo "Waiting for local server to start..."
     for i in {1..30}; do
-        if curl -s -f -k https://localhost:5001 > /dev/null; then
+        if check_server_health; then
             break
         fi
         if [ $i -eq 30 ]; then
@@ -130,37 +156,36 @@ launch_bore() {
         sleep 1
     done
     
-    echo "Starting bore tunnel..."
-    # Start bore with a fixed subdomain and proper configuration
-    bore local 5001 \
-        --to bore.pub \
-        --port 5001 &
-    BORE_PID=$!
-    
-    # Wait a moment for the tunnel to start
-    sleep 3
-    
-    # Verify the tunnel is running
-    if ! ps -p $BORE_PID > /dev/null; then
-        echo "Failed to start bore tunnel. Please check the logs above for errors."
-        kill $SERVER_PID 2>/dev/null || true
-        exit 1
-    fi
-    
-    echo "================================================"
-    echo "🚀 bore tunnel established successfully!"
-    echo "🌐 Your application is now available at:"
-    echo "   https://bore.pub:5001"
-    echo "================================================"
-    echo ""
-    echo "Press Ctrl+C to stop the tunnel"
-    echo ""
-    
-    # Cleanup processes when the script exits
-    trap "kill $SERVER_PID $BORE_PID 2>/dev/null || true" EXIT
-    
-    # Keep the script running to maintain the tunnel
-    wait $BORE_PID
+    # Main loop to keep bore tunnel running
+    while true; do
+        if ! check_bore_health; then
+            echo "Bore tunnel is down, restarting..."
+            pkill -f "bore local" || true
+            sleep 2
+            if ! start_bore_tunnel; then
+                echo "Failed to restart bore tunnel, retrying in 5 seconds..."
+                sleep 5
+                continue
+            fi
+        fi
+        
+        echo "================================================"
+        echo "🚀 bore tunnel established successfully!"
+        echo "🌐 Your application is now available at:"
+        echo "   https://bore.pub:5001"
+        echo "================================================"
+        echo ""
+        echo "Press Ctrl+C to stop the tunnel"
+        echo ""
+        
+        # Monitor both server and tunnel health
+        while check_server_health && check_bore_health; do
+            sleep 5
+        done
+        
+        echo "Connection issue detected, attempting to recover..."
+        sleep 2
+    done
 }
 
 # Check if script is called with --bore argument

@@ -97,7 +97,7 @@ function extractProductFromHtml(html: string, barcode: string): Partial<Inventor
       } else if (/cereal|pasta|rice|flour|sugar|salt/i.test(productName)) {
         category = 'Pantry';
         location = 'Pantry';
-      } else if (/spice|herb|seasoning/i.test(productName)) {
+      } else if (/spice|herb|seasoning|pepper|cinnamon|turmeric|cumin|coriander|cardamom|clove|ginger|garlic|paprika|oregano|basil|thyme|rosemary|sage|parsley|mint|chili|curry|masala|nutmeg|allspice|bay leaf|dill|fennel|mustard|saffron|vanilla|star anise|fenugreek|tarragon|marjoram|celery seed|caraway|juniper|lavender|lemongrass|citrus peel|sumac|za'atar|herbes de provence|garam masala|five spice|seven spice|ras el hanout|berbere|dukkah|shichimi|gomasio|furikake|togarashi|zaatar|baharat|advieh|mitmita|berbere|dukkah|shichimi|gomasio|furikake|togarashi|zaatar|baharat|advieh|mitmita/i.test(productName)) {
         category = 'Spices';
         location = 'Spice Rack';
       } else if (/beer|wine|juice|soda|water/i.test(productName)) {
@@ -120,14 +120,14 @@ function extractProductFromHtml(html: string, barcode: string): Partial<Inventor
       
       return {
         name: productName,
-        imageUrl: productImage,
+        image_url: productImage,
         quantity: quantity,
         unit: unit,
         count: 1,
         barcode: barcode,
         location: location,
         category: category,
-        expiryDate: null
+        expiry_date: null
       };
     } else {
       // Try direct inspection of the HTML for a product name
@@ -174,14 +174,14 @@ function extractProductFromHtml(html: string, barcode: string): Partial<Inventor
             // Return a basic item with just the extracted name
             return {
               name: productName,
-              imageUrl: '',
+              image_url: '',
               quantity: '1',
               unit: 'unit',
               count: 1,
               barcode: barcode,
               location: 'Pantry',
               category: 'Other',
-              expiryDate: null
+              expiry_date: null
             };
           }
         }
@@ -220,82 +220,50 @@ export async function lookupBarcodeInfo(barcode: string): Promise<Partial<Invent
         'Upgrade-Insecure-Requests': '1',
         'Cache-Control': 'max-age=0'
       }
-    },
-    {
-      name: 'barcodelookup.com',
-      url: `https://www.barcodelookup.com/${barcode}`,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Connection': 'keep-alive', 
-        'Referer': 'https://www.barcodelookup.com/',
-        'Upgrade-Insecure-Requests': '1'
-      }
-    },
-    {
-      // Alternative format structure
-      name: 'upcdatabase.org',
-      url: `https://www.upcdatabase.org/code/${barcode}`,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Connection': 'keep-alive'
-      }
     }
   ];
   
   console.log(`Looking up barcode ${barcode} from web sources`);
   
-  // Try each source until we find product information
-  for (const source of sources) {
-    try {
-      console.log(`Trying source: ${source.name}`);
-      const response = await axios.get(source.url, {
-        headers: source.headers,
-        timeout: 5000 // 5-second timeout to prevent long waits
-      });
-      
-      if (response.status === 200) {
-        // Check for rate limit errors in response text
-        if (response.data && typeof response.data === 'string' && 
-           (response.data.includes('Too Many Requests') || 
-            response.data.includes('rate limit') || 
-            response.data.includes('sign up'))) {
-          console.log(`Rate limited by ${source.name}, trying next source`);
-          continue; // Skip to next source
-        }
-          
-        // Try to extract product details from the HTML
-        const product = extractProductFromHtml(response.data, barcode);
-        
-        if (product) {
-          console.log(`Found product details from ${source.name}: ${product.name}`);
-          return product;
-        } else {
-          console.log(`No product found at ${source.name}, trying next source`);
-        }
-      } else {
-        console.log(`Non-200 response from ${source.name}: ${response.status}`);
+  // Create a promise that rejects after 1 second
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('Web search timeout')), 1000);
+  });
+
+  // Try the first source only
+  try {
+    console.log(`Trying source: ${sources[0].name}`);
+    const response = await Promise.race([
+      axios.get(sources[0].url, {
+        headers: sources[0].headers,
+        timeout: 1000 // 1-second timeout for the request
+      }),
+      timeoutPromise
+    ]) as { status: number; data: string };
+    
+    if (response.status === 200) {
+      // Check for rate limit errors in response text
+      if (response.data && typeof response.data === 'string' && 
+         (response.data.includes('Too Many Requests') || 
+          response.data.includes('rate limit') || 
+          response.data.includes('sign up'))) {
+        console.log(`Rate limited by ${sources[0].name}`);
+        return null;
       }
-    } catch (error) {
-      console.error(`Error with source ${source.name}:`, error);
-      // Continue to next source on error
+        
+      // Try to extract product details from the HTML
+      const product = extractProductFromHtml(response.data, barcode);
+      
+      if (product) {
+        console.log(`Found product details from ${sources[0].name}: ${product.name}`);
+        return product;
+      }
     }
+  } catch (error) {
+    console.error(`Error with source ${sources[0].name}:`, error);
   }
   
-  // Fallback - create a generic product with just the barcode
-  console.log(`No product information found for barcode ${barcode} from any source`);
-  return {
-    name: `Product (${barcode})`,
-    imageUrl: '',
-    quantity: '1',
-    unit: 'unit',
-    count: 1,
-    barcode: barcode,
-    location: 'Pantry',
-    category: 'Other',
-    expiryDate: null
-  };
+  // Return null if no product found or error occurred
+  console.log(`No product information found for barcode ${barcode}`);
+  return null;
 }

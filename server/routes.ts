@@ -92,15 +92,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { username, password } = req.body;
+      console.log('Login attempt:', { username, password });
       
       // Find user in database
       const user = await db.query.users.findFirst({
         where: eq(users.username, username)
       });
+      console.log('Found user:', user);
 
       if (!user) {
         // Create initial admin user if it doesn't exist
         if (username === 'admin' && password === 'admin123') {
+          console.log('Creating initial admin user');
           const hashedPassword = await bcrypt.hash(password, 10);
           const [newUser] = await db.insert(users)
             .values({ username, password: hashedPassword })
@@ -111,7 +114,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
+      console.log('Comparing password with hash:', { password, hash: user.password });
       const isValid = await bcrypt.compare(password, user.password);
+      console.log('Password comparison result:', isValid);
+
       if (!isValid) {
         return res.status(401).json({ message: "Invalid credentials" });
       }

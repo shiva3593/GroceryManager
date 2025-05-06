@@ -1,6 +1,6 @@
 import { db } from './db';
 import { users } from '@shared/schema';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 async function createAdminUser() {
   try {

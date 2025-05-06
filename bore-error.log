@@ -1,0 +1,50 @@
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 38: psql: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 41: createdb: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 38: psql: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 41: createdb: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 38: psql: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 41: createdb: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 38: psql: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 41: createdb: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 38: psql: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 41: createdb: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 38: psql: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 41: createdb: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 38: psql: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 41: createdb: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 38: psql: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 41: createdb: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 38: psql: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 41: createdb: command not found
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 163:  1577 Terminated: 15          bore local 5001 --to bore.pub --port 5001
+Error: server error: port already in use
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 163:  4439 Terminated: 15          bore local 5001 --to bore.pub --port 5001
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 163:  5069 Terminated: 15          bore local 5001 --to bore.pub --port 5001
+Error with source go-upc.com: Error: Web search timeout
+    at Timeout._onTimeout (/Users/shivarajchallapalli/codebase/GroceryManager/server/barcode-utils.ts:252:29)
+    at listOnTimeout (node:internal/timers:608:17)
+    at process.processTimers (node:internal/timers:543:7)
+Error with source barcodelookup.com: Error: Web search timeout
+    at Timeout._onTimeout (/Users/shivarajchallapalli/codebase/GroceryManager/server/barcode-utils.ts:252:29)
+    at listOnTimeout (node:internal/timers:608:17)
+    at process.processTimers (node:internal/timers:543:7)
+Error with source upcdatabase.org: Error: Web search timeout
+    at Timeout._onTimeout (/Users/shivarajchallapalli/codebase/GroceryManager/server/barcode-utils.ts:252:29)
+    at listOnTimeout (node:internal/timers:608:17)
+    at process.processTimers (node:internal/timers:543:7)
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 163:  5609 Terminated: 15          bore local 5001 --to bore.pub --port 5001
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 163:  6173 Terminated: 15          bore local 5001 --to bore.pub --port 5001
+Error with source go-upc.com: Error: Web search timeout
+    at Timeout._onTimeout (/Users/shivarajchallapalli/codebase/GroceryManager/server/barcode-utils.ts:230:29)
+    at listOnTimeout (node:internal/timers:608:17)
+    at process.processTimers (node:internal/timers:543:7)
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 163:  6712 Terminated: 15          bore local 5001 --to bore.pub --port 5001
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 163:  7231 Terminated: 15          bore local 5001 --to bore.pub --port 5001
+Error with source go-upc.com: Error: Web search timeout
+    at Timeout._onTimeout (/Users/shivarajchallapalli/codebase/GroceryManager/server/barcode-utils.ts:230:29)
+    at listOnTimeout (node:internal/timers:608:17)
+    at process.processTimers (node:internal/timers:543:7)
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 163:  7728 Terminated: 15          bore local 5001 --to bore.pub --port 5001
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 163:  8335 Terminated: 15          bore local 5001 --to bore.pub --port 5001
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 163:  9026 Terminated: 15          bore local 5001 --to bore.pub --port 5001
+/Users/shivarajchallapalli/codebase/GroceryManager/setup.sh: line 163:  9680 Terminated: 15          bore local 5001 --to bore.pub --port 5001

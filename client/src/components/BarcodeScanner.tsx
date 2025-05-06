@@ -664,8 +664,8 @@ export default function BarcodeScanner({ isOpen, onClose, onDetected }: BarcodeS
       // Pass the barcode and complete product info
       onDetected(completeProductInfo.barcode || manualBarcode, completeProductInfo);
       
-      // Close dialog after submission
-      setTimeout(() => onClose(), 300);
+      // Close dialog immediately after submission
+      onClose();
     })();
   };
   
@@ -752,12 +752,18 @@ export default function BarcodeScanner({ isOpen, onClose, onDetected }: BarcodeS
   };
   
   const InventoryForm = ({ form, productInfo, onSubmit }: InventoryFormProps) => {
+    const handleSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onSubmit();
+    };
+
     return (
       <div className="mt-6 pt-4 border-t border-gray-200">
         <h3 className="text-base font-medium mb-4">Add to Inventory</h3>
         
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {/* Name field */}
             <FormField
               control={form.control}
@@ -766,7 +772,7 @@ export default function BarcodeScanner({ isOpen, onClose, onDetected }: BarcodeS
                 <FormItem>
                   <FormLabel>Product Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="Product name" {...field} />
+                    <Input placeholder="Product name" {...field} autoComplete="off" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -795,7 +801,15 @@ export default function BarcodeScanner({ isOpen, onClose, onDetected }: BarcodeS
                   <FormItem>
                     <FormLabel>Quantity</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g. 500" {...field} />
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.01" 
+                        placeholder="e.g. 500" 
+                        {...field} 
+                        onChange={(e) => field.onChange(e.target.value)}
+                        autoComplete="off"
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -824,6 +838,9 @@ export default function BarcodeScanner({ isOpen, onClose, onDetected }: BarcodeS
                         <SelectItem value="bottle">bottle</SelectItem>
                         <SelectItem value="can">can</SelectItem>
                         <SelectItem value="box">box</SelectItem>
+                        <SelectItem value="jar">jar</SelectItem>
+                        <SelectItem value="bag">bag</SelectItem>
+                        <SelectItem value="container">container</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -846,6 +863,7 @@ export default function BarcodeScanner({ isOpen, onClose, onDetected }: BarcodeS
                       step="1" 
                       {...field} 
                       onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                      autoComplete="off"
                     />
                   </FormControl>
                   <FormMessage />
@@ -876,6 +894,8 @@ export default function BarcodeScanner({ isOpen, onClose, onDetected }: BarcodeS
                       <SelectItem value="Beverages">Beverages</SelectItem>
                       <SelectItem value="Snacks">Snacks</SelectItem>
                       <SelectItem value="Spices">Spices</SelectItem>
+                      <SelectItem value="Canned Goods">Canned Goods</SelectItem>
+                      <SelectItem value="Condiments">Condiments</SelectItem>
                       <SelectItem value="Other">Other</SelectItem>
                     </SelectContent>
                   </Select>
@@ -903,6 +923,10 @@ export default function BarcodeScanner({ isOpen, onClose, onDetected }: BarcodeS
                       <SelectItem value="Pantry">Pantry</SelectItem>
                       <SelectItem value="Spice Rack">Spice Rack</SelectItem>
                       <SelectItem value="Cupboard">Cupboard</SelectItem>
+                      <SelectItem value="Kitchen Cabinet">Kitchen Cabinet</SelectItem>
+                      <SelectItem value="Storage Room">Storage Room</SelectItem>
+                      <SelectItem value="Basement">Basement</SelectItem>
+                      <SelectItem value="Garage">Garage</SelectItem>
                       <SelectItem value="Other">Other</SelectItem>
                     </SelectContent>
                   </Select>

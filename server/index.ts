@@ -24,6 +24,9 @@ app.use(cors({
   optionsSuccessStatus: 204
 }));
 
+// Parse JSON request bodies
+app.use(express.json());
+
 // Add security headers
 app.use((req, res, next) => {
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
@@ -36,7 +39,6 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
 app.use((req, res, next) => {
@@ -126,7 +128,10 @@ async function initializeDatabase() {
 
   // Start HTTPS server
   const PORT = parseInt(process.env.PORT || '5001', 10);
-  const httpsServer = https.createServer(options, app);
+  const httpsServer = https.createServer({
+    ...options,
+    keepAliveTimeout: 60000, // 60 seconds
+  }, app);
 
   httpsServer.listen(PORT, "0.0.0.0", () => {
     log(`HTTPS Server running on https://localhost:${PORT}`);

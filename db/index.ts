@@ -12,8 +12,13 @@ if (!connectionString) {
 // Configure PostgreSQL connection options
 const sql = postgres(connectionString, {
   max: 10,
-  idle_timeout: 20,
-  connect_timeout: 10
+  idle_timeout: 300, // 5 minutes
+  connect_timeout: 30, // 30 seconds
+  keep_alive: 60, // 60 seconds
+  max_lifetime: 3600, // 1 hour
+  connection: {
+    application_name: 'grocery-manager'
+  }
 });
 
 // Create drizzle instance
