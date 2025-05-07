@@ -1,34 +1,53 @@
 # Dependencies
 node_modules/
-.pnp
+.pnp/
 .pnp.js
 
 # Testing
 coverage/
 
 # Production
-build/
 dist/
+build/
+.vercel/
 
-# Misc
-.DS_Store
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+*.log.*
+
+# Environment variables
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# SSL Certificates
-certs/
-*.pem
-
 # IDE
 .idea/
 .vscode/
 *.swp
-*.swo 
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+bore-error.log
+bore-output.log
+bore.log
+server.log
+server/wol-error.log
+server/wol-output.log
+server/wake-on-lan.log
+server/port-forward.log
+server/proxy.log
+
+# SSL Certificates
+certs/
+*.pem 

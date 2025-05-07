@@ -133,14 +133,35 @@ async function initializeDatabase() {
     keepAliveTimeout: 60000, // 60 seconds
   }, app);
 
+  // Function to kill any process using a port
+  const killProcessOnPort = (port: number) => {
+    try {
+      require('child_process').execSync(`lsof -ti:${port} | xargs kill -9`);
+      return true;
+    } catch (err) {
+      return false;
+    }
+  };
+
+  // Try to start the server on the desired port
   httpsServer.listen(PORT, "0.0.0.0", () => {
     log(`HTTPS Server running on https://localhost:${PORT}`);
     log(`HTTPS Server running on https://192.168.1.210:${PORT}`);
   }).on('error', (e: any) => {
     if (e.code === 'EADDRINUSE') {
-      const nextPort = PORT + 1;
-      log(`Port ${PORT} is busy, trying ${nextPort}...`);
-      httpsServer.listen(nextPort, "0.0.0.0");
+      log(`Port ${PORT} is busy, attempting to free it...`);
+      if (killProcessOnPort(PORT)) {
+        log(`Successfully freed port ${PORT}, retrying...`);
+        setTimeout(() => {
+          httpsServer.listen(PORT, "0.0.0.0");
+        }, 1000);
+      } else {
+        log(`Failed to free port ${PORT}, please check what's using it`);
+        process.exit(1);
+      }
+    } else {
+      log(`Failed to start server: ${e.message}`);
+      process.exit(1);
     }
   });
 })();
