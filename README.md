@@ -1,66 +1,73 @@
+# Grocery Manager iOS App
 
-# Grocery Manager
-
-A full-stack Grocery Manager application for streamlined meal planning, shopping, and recipe management.
+A React Native iOS application for managing grocery lists and items.
 
 ## Features
 
-- 🔐 JWT Authentication with login/register capabilities
-- 📱 Mobile-first design with bottom navigation
-- 📖 Recipe Management
-  - Intelligent recipe import from URLs
-  - Recipe comparison tool
-  - Ingredient editing
-  - Recipe favorites
-- 🛒 Shopping List
-  - Category-based organization
-  - Smart list generation from recipes
-- 📦 Inventory Management
-  - Barcode scanning support
-  - Expiry tracking
-  - Stock levels
-- 💫 Modern Tech Stack
-  - React + TypeScript frontend
-  - Express.js backend
-  - PostgreSQL database
-  - Tailwind CSS + Shadcn UI
-  - Drizzle ORM
+- User authentication
+- Grocery list management
+- Item scanning (coming soon)
+- Real-time synchronization with the backend server
 
 ## Prerequisites
 
-- Node.js v20+
-- PostgreSQL 15+
-- npm
+- Node.js (v14 or later)
+- npm or yarn
+- Xcode (for iOS development)
+- iOS Simulator or physical iOS device
 
-## Quick Start
+## Installation
 
-1. Run the setup script:
+1. Clone the repository:
 ```bash
-chmod +x setup.sh
-./setup.sh
+git clone <repository-url>
+cd GroceryManagerApp
 ```
 
-2. Start the development server:
+2. Install dependencies:
 ```bash
-npm run dev
+npm install
 ```
 
-The app will be available at http://0.0.0.0:5000
-
-## Environment Variables
-
-Create a `.env` file with:
+3. Start the development server:
+```bash
+npm start
 ```
-DATABASE_URL="postgres://localhost:5432/grocery_manager"
-JWT_SECRET="your-secret-key"
+
+4. Run on iOS:
+```bash
+npm run ios
 ```
 
 ## Development
 
-- Frontend runs on Vite with HMR
-- Backend uses Express with TypeScript
-- Database migrations handled by Drizzle ORM
+The app is built using:
+- React Native
+- TypeScript
+- React Navigation for routing
+- React Native Paper for UI components
+- Expo for development and building
 
-## Deployment
+## Project Structure
 
-This project is configured for deployment on Replit. Visit the Deployments tab to publish your changes.
+```
+src/
+  ├── components/     # Reusable UI components
+  ├── screens/        # Screen components
+  ├── navigation/     # Navigation configuration
+  ├── services/       # API and other services
+  ├── utils/         # Utility functions
+  └── hooks/         # Custom React hooks
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
