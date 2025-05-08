@@ -813,31 +813,85 @@ export const addRecipeToShoppingList = async (recipe: Recipe, listId?: number) =
   }
   if (!targetListId) throw new Error('Could not determine shopping list ID');
 
-  // Fetch inventory items for fuzzy matching (still used in UI, not for filtering here)
-  // const inventoryItems = await databaseService.getInventoryItems();
-  // const inventoryNames = inventoryItems.map(item => item.name);
+  // Fetch current items in the shopping list
+  const currentItems = await databaseService.executeQuery<any>(
+    'SELECT id, name, quantity, unit FROM shopping_list_items WHERE listId = ?',
+    [targetListId]
+  );
 
-  // Debug log: print all ingredients being considered
-  console.log('Ingredients to add (no inventory filter):', recipe.ingredients);
+  // Fetch inventory items for fuzzy matching
+  const inventoryItems = await databaseService.getInventoryItems();
+  const inventoryNames = inventoryItems.map(item => item.name);
 
-  // Add all ingredients with a name
-  const validIngredients = recipe.ingredients.filter(ing => ing.name);
-  if (validIngredients.length > 0) {
-    const now = new Date().toISOString();
-    const placeholders = validIngredients.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ');
-    const values = validIngredients.flatMap(ing => [
-      targetListId,
-      ing.name,
-      isNaN(parseFloat(ing.quantity)) ? 1 : parseFloat(ing.quantity),
-      ing.unit || 'unit',
-      recipe.category || 'Other',
-      0,
-      now
-    ]);
-    await databaseService.executeUpdate(
-      `INSERT INTO shopping_list_items (listId, name, quantity, unit, category, completed, created_at) VALUES ${placeholders}`,
-      values
+  // Helper to normalize names
+  function normalizeName(name: string): string {
+    let normalized = name.toLowerCase().trim();
+    normalized = normalized.replace(/^(fresh|frozen|organic|natural|raw|cooked|dried|ground|chopped|diced|sliced|grated|minced)\s+/g, '');
+    normalized = normalized.replace(/\s+(powder|paste|sauce|extract|concentrate|juice)$/g, '');
+    if (normalized.endsWith('s') && normalized.length > 3) {
+      normalized = normalized.slice(0, -1);
+    }
+    return normalized;
+  }
+
+  // Fuzzy match: return the matched inventory name or null
+  function getMatchedInventoryName(ingredientName: string): string | null {
+    const normIng = normalizeName(ingredientName);
+    for (const inv of inventoryNames) {
+      if (normalizeName(inv) === normIng) return inv;
+      if (normalizeName(inv).includes(normIng) || normIng.includes(normalizeName(inv))) return inv;
+      const ingWords = normIng.split(' ');
+      const invWords = normalizeName(inv).split(' ');
+      if (ingWords.some(word => word.length > 3 && invWords.includes(word))) return inv;
+    }
+    return null;
+  }
+
+  // Deduplicate recipe ingredients by normalized name and unit, summing quantities
+  const dedupedMap = new Map<string, { name: string; quantity: number; unit: string; }>();
+  for (const ing of recipe.ingredients.filter(ing => ing.name)) {
+    let displayName = ing.name;
+    const matchedInv = getMatchedInventoryName(ing.name);
+    if (matchedInv) {
+      displayName = `${ing.name} (matched: ${matchedInv})`;
+    }
+    const key = normalizeName(displayName) + '|' + (ing.unit || 'unit');
+    const qty = isNaN(parseFloat(ing.quantity)) ? 1 : parseFloat(ing.quantity);
+    if (dedupedMap.has(key)) {
+      dedupedMap.get(key)!.quantity += qty;
+    } else {
+      dedupedMap.set(key, { name: displayName, quantity: qty, unit: ing.unit || 'unit' });
+    }
+  }
+  const dedupedIngredients = Array.from(dedupedMap.values());
+
+  // Add deduplicated ingredients to the shopping list
+  for (const ing of dedupedIngredients) {
+    const normName = normalizeName(ing.name);
+    const existing = currentItems.find(
+      (item: any) => normalizeName(item.name) === normName && (item.unit || '') === (ing.unit || '')
     );
+    if (existing) {
+      // Update quantity (sum)
+      await databaseService.executeUpdate(
+        'UPDATE shopping_list_items SET quantity = quantity + ? WHERE id = ?',
+        [ing.quantity, existing.id]
+      );
+    } else {
+      // Insert new item
+      await databaseService.executeUpdate(
+        `INSERT INTO shopping_list_items (listId, name, quantity, unit, category, completed, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          targetListId,
+          ing.name,
+          ing.quantity,
+          ing.unit,
+          recipe.category || 'Other',
+          0,
+          new Date().toISOString()
+        ]
+      );
+    }
   }
 };
 

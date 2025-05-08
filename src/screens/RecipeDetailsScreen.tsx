@@ -72,35 +72,37 @@ export default function RecipeDetailsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView>
-        <Surface style={[styles.header, { backgroundColor: theme.colors.primaryContainer, elevation: 4, borderBottomLeftRadius: 20, borderBottomRightRadius: 20, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }]}> 
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 60, paddingHorizontal: 8 }}>
-            <IconButton
-              icon="close"
-              size={28}
-              onPress={() => navigation.navigate('Recipes')}
-              style={{ marginLeft: 0, marginRight: 8 }}
-            />
-            <Title style={{ flex: 1, textAlign: 'center', fontSize: 26, fontWeight: 'bold', color: theme.colors.onPrimaryContainer, marginHorizontal: 8 }} numberOfLines={2}>
-              {recipe.name}
-            </Title>
-            <IconButton
-              icon={props => (
-                <MaterialCommunityIcons
-                  {...props}
-                  name={isFavorited ? 'star' : 'star-outline'}
-                  color={isFavorited ? theme.colors.primary : theme.colors.onPrimaryContainer}
-                  size={26}
-                />
-              )}
-              size={26}
-              onPress={() => setIsFavorited(!isFavorited)}
-              style={{ marginLeft: 8, marginRight: 0 }}
-            />
-          </View>
-          <Divider style={{ marginTop: 0, marginBottom: 0, backgroundColor: theme.colors.outlineVariant, height: 1 }} />
-        </Surface>
+      {/* Fixed Header */}
+      <Surface style={[styles.header, { backgroundColor: theme.colors.primaryContainer, elevation: 4, borderBottomLeftRadius: 20, borderBottomRightRadius: 20, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }]}> 
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 60, paddingHorizontal: 8 }}>
+          <IconButton
+            icon="close"
+            size={28}
+            onPress={() => navigation.navigate('Recipes')}
+            style={{ marginLeft: 0, marginRight: 8 }}
+          />
+          <Title style={{ flex: 1, textAlign: 'center', fontSize: 26, fontWeight: 'bold', color: theme.colors.onPrimaryContainer, marginHorizontal: 8 }} numberOfLines={2}>
+            {recipe.name}
+          </Title>
+          <IconButton
+            icon={props => (
+              <MaterialCommunityIcons
+                {...props}
+                name={isFavorited ? 'star' : 'star-outline'}
+                color={isFavorited ? theme.colors.primary : theme.colors.onPrimaryContainer}
+                size={26}
+              />
+            )}
+            size={26}
+            onPress={() => setIsFavorited(!isFavorited)}
+            style={{ marginLeft: 8, marginRight: 0 }}
+          />
+        </View>
+        <Divider style={{ marginTop: 0, marginBottom: 0, backgroundColor: theme.colors.outlineVariant, height: 1 }} />
+      </Surface>
 
+      {/* Scrollable Content */}
+      <ScrollView>
         <View style={styles.content}>
           <View style={styles.details}>
             <Chip icon="clock-outline" style={styles.chip}>
@@ -207,22 +209,22 @@ export default function RecipeDetailsScreen() {
               onPress={async () => {
                 setAdding(true);
                 try {
-                  // Find or create the active shopping list
+                  // Find or create the 'Recipe Shopping List'
                   let lists = await getShoppingLists();
-                  let activeList = lists.find(l => !l.completed);
-                  if (!activeList) {
+                  let recipeList = lists.find(l => l.name === 'Recipe Shopping List' && !l.completed);
+                  if (!recipeList) {
                     const newList = {
-                      name: 'My Shopping List',
+                      name: 'Recipe Shopping List',
                       completed: false,
                       date: new Date().toISOString(),
                     };
                     const newListId = await databaseService.addShoppingList(newList as any);
                     lists = await getShoppingLists();
-                    activeList = lists.find(l => l.id === newListId);
+                    recipeList = lists.find(l => l.id === newListId);
                   }
-                  if (!activeList) throw new Error('Could not determine shopping list');
-                  await addRecipeToShoppingList(recipe, activeList.id);
-                  navigation.navigate('ShoppingLists', { reload: Date.now() });
+                  if (!recipeList) throw new Error('Could not determine Recipe Shopping List');
+                  await addRecipeToShoppingList(recipe, recipeList.id);
+                  navigation.navigate('ShoppingListDetails', { list: recipeList, reload: Date.now() });
                 } catch (e) {
                   alert('Failed to add ingredients: ' + (e as Error).message);
                 } finally {

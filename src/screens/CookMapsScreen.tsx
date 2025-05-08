@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, FlatList } from 'react-native';
 import { FAB, Card, Title, IconButton, Text, useTheme, Menu, Button, Searchbar } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
-import { getCookMaps, deleteCookMap, CookMap } from '../services/database';
+import { getCookMaps, CookMap, initDatabase } from '../services/database';
 import { RootStackNavigationProp } from '../navigation/types';
 
 export default function CookMapsScreen() {
@@ -11,28 +11,23 @@ export default function CookMapsScreen() {
   const [menuVisible, setMenuVisible] = useState<number | null>(null);
   const navigation = useNavigation<RootStackNavigationProp>();
   const theme = useTheme();
-
-  const loadMaps = async () => {
-    try {
-      const data = await getCookMaps();
-      setMaps(data);
-    } catch (error) {
-      console.error('Error loading cook maps:', error);
-    }
-  };
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadMaps();
+    const load = async () => {
+      setLoading(true);
+      try {
+        await initDatabase();
+        const data = await getCookMaps();
+        setMaps(data);
+      } catch (e) {
+        console.error('Error loading cook maps:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
   }, []);
-
-  const handleDeleteMap = async (id: number) => {
-    try {
-      await deleteCookMap(id);
-      loadMaps();
-    } catch (error) {
-      console.error('Error deleting cook map:', error);
-    }
-  };
 
   const filteredMaps = maps.filter(map =>
     map.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -65,7 +60,8 @@ export default function CookMapsScreen() {
             <Menu.Item
               onPress={() => {
                 setMenuVisible(null);
-                handleDeleteMap(item.id!);
+                // Delete functionality not implemented yet
+                // handleDeleteMap(item.id!);
               }}
               title="Delete"
             />

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, FlatList, SafeAreaView } from 'react-native';
 import { FAB, Card, Title, IconButton, Text, useTheme, Menu, Button, ActivityIndicator, Surface, Searchbar } from 'react-native-paper';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { getShoppingLists, deleteShoppingList, ShoppingList, initDatabase, addShoppingList, updateShoppingList } from '../services/database';
 import { RootStackNavigationProp } from '../navigation/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +17,7 @@ export default function ShoppingListsScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState('');
+  const route = useRoute();
 
   const loadLists = async () => {
     try {
@@ -37,6 +38,12 @@ export default function ShoppingListsScreen() {
   useEffect(() => {
     loadLists();
   }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadLists();
+    }, [(route as any).params?.reload])
+  );
 
   const handleAddList = async (list: NewShoppingList) => {
     try {
@@ -175,7 +182,7 @@ export default function ShoppingListsScreen() {
           <FlatList
             data={filteredLists}
             renderItem={renderItem}
-            keyExtractor={item => String(item.id)}
+            keyExtractor={item => String(item.id!)}
             contentContainerStyle={styles.list}
           />
         )}

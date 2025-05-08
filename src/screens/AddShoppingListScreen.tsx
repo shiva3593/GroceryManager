@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { TextInput, Button, HelperText, useTheme } from 'react-native-paper';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { addShoppingList, updateShoppingList, ShoppingList } from '../services/database';
+import { addShoppingList, updateShoppingList, ShoppingList, getShoppingLists } from '../services/database';
 import { RootStackParamList } from '../navigation/types';
 
 type AddShoppingListScreenRouteProp = RouteProp<RootStackParamList, 'AddShoppingList'>;
@@ -28,6 +28,14 @@ export default function AddShoppingListScreen() {
     }
 
     try {
+      // Prevent duplicate shopping lists by name (case-insensitive, not completed)
+      const allLists = await getShoppingLists();
+      const exists = allLists.find(l => l.name.trim().toLowerCase() === name.trim().toLowerCase() && !l.completed);
+      if (exists && !route.params?.list?.id) {
+        setError('A shopping list with this name already exists.');
+        return;
+      }
+
       const list: Omit<ShoppingList, 'id'> = {
         name: name.trim(),
         date: new Date().toISOString(),
@@ -41,7 +49,7 @@ export default function AddShoppingListScreen() {
           route.params.onEdit(updatedList);
         }
       } else {
-        await addShoppingList(list);
+        await addShoppingList(list as any);
       }
 
       navigation.goBack();
