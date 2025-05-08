@@ -1,17 +1,34 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, SafeAreaView, Linking } from 'react-native';
+import { View, StyleSheet, ScrollView, SafeAreaView, Linking, Modal, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { Card, Title, Text, Button, Chip, IconButton, useTheme, Surface, Divider } from 'react-native-paper';
-import { RouteProp, useRoute } from '@react-navigation/native';
+import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { Recipe } from '../services/database';
+import { Recipe } from '../types/database';
+import { updateRecipe, addRecipeToShoppingList, getShoppingLists, databaseService, ShoppingList } from '../services/database';
+import { Button as PaperButton } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 type RecipeDetailsScreenRouteProp = RouteProp<RootStackParamList, 'RecipeDetails'>;
 
+interface Ingredient {
+  name: string;
+  quantity: string;
+  unit: string;
+}
+
 export default function RecipeDetailsScreen() {
   const route = useRoute<RecipeDetailsScreenRouteProp>();
-  const recipe = route.params.recipe;
+  const initialRecipe = route.params.recipe;
   const theme = useTheme();
+  const [recipe, setRecipe] = useState(initialRecipe);
   const [isFavorited, setIsFavorited] = useState(recipe.is_favorite);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editedIngredients, setEditedIngredients] = useState(recipe.ingredients || []);
+  const [adding, setAdding] = useState(false);
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const insets = useSafeAreaInsets();
 
   const parsedNutrition = typeof recipe.nutrition === 'string' 
     ? JSON.parse(recipe.nutrition) 
@@ -21,29 +38,67 @@ export default function RecipeDetailsScreen() {
     ? JSON.parse(recipe.instructions)
     : recipe.instructions || [];
 
+  // Open modal and initialize with current ingredients
+  const openEditModal = () => {
+    setEditedIngredients(recipe.ingredients || []);
+    setEditModalVisible(true);
+  };
+
+  // Handle ingredient change
+  const handleIngredientChange = (index: number, value: string) => {
+    const newIngredients = [...editedIngredients];
+    newIngredients[index].name = value;
+    setEditedIngredients(newIngredients);
+  };
+
+  // Add new ingredient
+  const addIngredient = () => {
+    setEditedIngredients([...editedIngredients, { name: '', quantity: '', unit: '' }]);
+  };
+
+  // Remove ingredient
+  const removeIngredient = (index: number) => {
+    const newIngredients = editedIngredients.filter((_: any, i: number) => i !== index);
+    setEditedIngredients(newIngredients);
+  };
+
+  // Save changes
+  const saveIngredients = async () => {
+    const updatedRecipe = { ...recipe, ingredients: editedIngredients.filter((ing: any) => ing.name.trim() !== '') };
+    await updateRecipe(updatedRecipe);
+    setRecipe(updatedRecipe); // Update the local recipe state
+    setEditModalVisible(false);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView>
-        <Surface style={styles.header} elevation={4}>
-          <View style={styles.headerContent}>
-            <Title style={styles.title}>{recipe.name}</Title>
+        <Surface style={[styles.header, { backgroundColor: theme.colors.primaryContainer, elevation: 4, borderBottomLeftRadius: 20, borderBottomRightRadius: 20, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }]}> 
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 60, paddingHorizontal: 8 }}>
             <IconButton
-              icon={isFavorited ? 'star' : 'star-outline'}
-              size={24}
+              icon="close"
+              size={28}
+              onPress={() => navigation.navigate('Recipes')}
+              style={{ marginLeft: 0, marginRight: 8 }}
+            />
+            <Title style={{ flex: 1, textAlign: 'center', fontSize: 26, fontWeight: 'bold', color: theme.colors.onPrimaryContainer, marginHorizontal: 8 }} numberOfLines={2}>
+              {recipe.name}
+            </Title>
+            <IconButton
+              icon={props => (
+                <MaterialCommunityIcons
+                  {...props}
+                  name={isFavorited ? 'star' : 'star-outline'}
+                  color={isFavorited ? theme.colors.primary : theme.colors.onPrimaryContainer}
+                  size={26}
+                />
+              )}
+              size={26}
               onPress={() => setIsFavorited(!isFavorited)}
-              style={styles.favoriteButton}
+              style={{ marginLeft: 8, marginRight: 0 }}
             />
           </View>
-          {recipe.url && (
-            <Button
-              mode="text"
-              onPress={() => Linking.openURL(recipe.url!)}
-              icon="link"
-              style={styles.urlButton}
-            >
-              View Original Recipe
-            </Button>
-          )}
+          <Divider style={{ marginTop: 0, marginBottom: 0, backgroundColor: theme.colors.outlineVariant, height: 1 }} />
         </Surface>
 
         <View style={styles.content}>
@@ -67,6 +122,27 @@ export default function RecipeDetailsScreen() {
 
           <Divider style={styles.divider} />
 
+          {/* Ingredients */}
+          <View style={styles.section}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 20, fontWeight: 'bold' }}>Ingredients</Text>
+              <TouchableOpacity onPress={openEditModal} style={{ padding: 6 }}>
+                <Text style={{ color: '#007AFF', fontWeight: 'bold' }}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.ingredientsList}>
+              {recipe.ingredients.map((ingredient: Ingredient, index: number) => (
+                <View key={index} style={styles.ingredientItem}>
+                  <Text style={styles.ingredientText}>
+                    {ingredient.quantity} {ingredient.unit} {ingredient.name}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          <Divider style={styles.divider} />
+
           {/* Nutrition Facts */}
           <View style={styles.section}>
             <Title style={styles.sectionTitle}>Nutrition Facts</Title>
@@ -77,15 +153,23 @@ export default function RecipeDetailsScreen() {
               </View>
               <View style={styles.nutritionItem}>
                 <Text style={styles.nutritionLabel}>Protein</Text>
-                <Text style={styles.nutritionValue}>{parsedNutrition.protein}g</Text>
+                <Text style={styles.nutritionValue}>{parsedNutrition.protein}{parsedNutrition.protein !== 'None' ? 'g' : ''}</Text>
               </View>
               <View style={styles.nutritionItem}>
                 <Text style={styles.nutritionLabel}>Carbs</Text>
-                <Text style={styles.nutritionValue}>{parsedNutrition.carbs}g</Text>
+                <Text style={styles.nutritionValue}>{parsedNutrition.carbs}{parsedNutrition.carbs !== 'None' ? 'g' : ''}</Text>
               </View>
               <View style={styles.nutritionItem}>
                 <Text style={styles.nutritionLabel}>Fat</Text>
-                <Text style={styles.nutritionValue}>{parsedNutrition.fat}g</Text>
+                <Text style={styles.nutritionValue}>{parsedNutrition.fat}{parsedNutrition.fat !== 'None' ? 'g' : ''}</Text>
+              </View>
+              <View style={styles.nutritionItem}>
+                <Text style={styles.nutritionLabel}>Fiber</Text>
+                <Text style={styles.nutritionValue}>{parsedNutrition.fiber ?? 'None'}{parsedNutrition.fiber && parsedNutrition.fiber !== 'None' ? 'g' : ''}</Text>
+              </View>
+              <View style={styles.nutritionItem}>
+                <Text style={styles.nutritionLabel}>Sugar</Text>
+                <Text style={styles.nutritionValue}>{parsedNutrition.sugar ?? 'None'}{parsedNutrition.sugar && parsedNutrition.sugar !== 'None' ? 'g' : ''}</Text>
               </View>
             </View>
           </View>
@@ -118,8 +202,32 @@ export default function RecipeDetailsScreen() {
           <View style={styles.actions}>
             <Button
               mode="contained"
-              onPress={() => {
-                // TODO: Add to shopping list functionality
+              loading={adding}
+              disabled={adding}
+              onPress={async () => {
+                setAdding(true);
+                try {
+                  // Find or create the active shopping list
+                  let lists = await getShoppingLists();
+                  let activeList = lists.find(l => !l.completed);
+                  if (!activeList) {
+                    const newList = {
+                      name: 'My Shopping List',
+                      completed: false,
+                      date: new Date().toISOString(),
+                    };
+                    const newListId = await databaseService.addShoppingList(newList as any);
+                    lists = await getShoppingLists();
+                    activeList = lists.find(l => l.id === newListId);
+                  }
+                  if (!activeList) throw new Error('Could not determine shopping list');
+                  await addRecipeToShoppingList(recipe, activeList.id);
+                  navigation.navigate('ShoppingLists', { reload: Date.now() });
+                } catch (e) {
+                  alert('Failed to add ingredients: ' + (e as Error).message);
+                } finally {
+                  setAdding(false);
+                }
               }}
               icon="cart"
               style={styles.actionButton}
@@ -139,6 +247,48 @@ export default function RecipeDetailsScreen() {
           </View>
         </View>
       </ScrollView>
+      <Modal visible={editModalVisible} animationType="slide">
+        <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+          >
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12 }}>
+                <Text style={{ fontSize: 22, fontWeight: 'bold' }}>Edit Ingredients</Text>
+                <IconButton icon="close" size={28} onPress={() => setEditModalVisible(false)} />
+              </View>
+              <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 120, flexGrow: 1 }}>
+                {editedIngredients.map((ingredient: any, idx: number) => (
+                  <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                    <TextInput
+                      style={{ flex: 1, borderWidth: 1, borderColor: '#ccc', borderRadius: 6, padding: 8, marginRight: 8 }}
+                      value={ingredient.name}
+                      onChangeText={text => handleIngredientChange(idx, text)}
+                      placeholder="Ingredient"
+                    />
+                    <TouchableOpacity onPress={() => removeIngredient(idx)}>
+                      <Text style={{ color: 'red', fontWeight: 'bold' }}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <PaperButton mode="contained" onPress={addIngredient} style={{ marginTop: 8, marginBottom: 16 }}>
+                  Add Ingredient
+                </PaperButton>
+              </ScrollView>
+              <View style={{ position: 'absolute', left: 0, right: 0, bottom: insets.bottom + 8, backgroundColor: 'white', flexDirection: 'row', justifyContent: 'space-between', padding: 20, borderTopWidth: 1, borderColor: '#eee' }}>
+                <PaperButton mode="outlined" onPress={() => setEditModalVisible(false)} style={{ flex: 1, marginRight: 8 }}>
+                  Cancel
+                </PaperButton>
+                <PaperButton mode="contained" onPress={saveIngredients} style={{ flex: 1 }}>
+                  Save
+                </PaperButton>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -149,10 +299,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   header: {
-    backgroundColor: 'white',
     padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    backgroundColor: '#fff',
   },
   headerContent: {
     flexDirection: 'row',
@@ -181,6 +329,7 @@ const styles = StyleSheet.create({
   },
   chip: {
     marginRight: 8,
+    marginBottom: 8,
   },
   categoryChip: {
     marginBottom: 16,
@@ -188,7 +337,6 @@ const styles = StyleSheet.create({
   description: {
     fontSize: 16,
     lineHeight: 24,
-    color: '#666',
     marginBottom: 16,
   },
   divider: {
@@ -199,8 +347,22 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
     marginBottom: 16,
+  },
+  ingredientsList: {
+    gap: 8,
+  },
+  ingredientItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    elevation: 1,
+  },
+  ingredientText: {
+    fontSize: 16,
+    flex: 1,
   },
   nutritionGrid: {
     flexDirection: 'row',
@@ -210,10 +372,10 @@ const styles = StyleSheet.create({
   nutritionItem: {
     flex: 1,
     minWidth: '45%',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#fff',
     padding: 16,
     borderRadius: 8,
-    alignItems: 'center',
+    elevation: 1,
   },
   nutritionLabel: {
     fontSize: 14,
@@ -221,48 +383,50 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   nutritionValue: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#2196F3',
   },
   instructionStep: {
     flexDirection: 'row',
     marginBottom: 16,
-    alignItems: 'flex-start',
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 8,
+    elevation: 1,
   },
   stepNumber: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#2196F3',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
-    marginTop: 2,
+    marginRight: 16,
   },
   stepNumberText: {
-    color: 'white',
-    fontSize: 14,
+    color: '#fff',
+    fontSize: 16,
     fontWeight: 'bold',
   },
   instructionText: {
     flex: 1,
     fontSize: 16,
     lineHeight: 24,
-    color: '#333',
   },
   storageText: {
     fontSize: 16,
     lineHeight: 24,
-    color: '#666',
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 8,
+    elevation: 1,
   },
   actions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 24,
-    gap: 16,
   },
   actionButton: {
     flex: 1,
+    marginHorizontal: 8,
   },
 }); 

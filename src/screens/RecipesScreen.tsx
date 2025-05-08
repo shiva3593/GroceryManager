@@ -3,12 +3,40 @@ import { View, StyleSheet, ScrollView, SafeAreaView } from 'react-native';
 import { Card, Title, Text, Button, FAB, Portal, Dialog, TextInput, ActivityIndicator, Chip, IconButton, useTheme, Surface } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { Recipe, getRecipes, deleteRecipe, toggleFavorite, addRecipe, initDatabase } from '../services/database';
-import { importRecipeFromUrl } from '../services/api';
+import { getRecipes, deleteRecipe, toggleFavorite, addRecipe, initDatabase } from '../services/database';
+import { importRecipeWithFallback, checkServerAvailability, syncPendingRecipes } from '../services/sync';
+import { Recipe } from '../types/database';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+interface Ingredient {
+  name: string;
+  quantity: string;
+  unit: string;
+}
 
 type RecipesScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Recipes'>;
 };
+
+// Helper to normalize recipe fields from server to client model
+function normalizeRecipe(recipe: any): Recipe {
+  return {
+    ...recipe,
+    name: recipe.name || recipe.title || 'Imported Recipe',
+    prepTime: recipe.prepTime ?? recipe.prep_time ?? 30,
+    cookTime: recipe.cookTime ?? recipe.cook_time ?? 30,
+    servings: typeof recipe.servings === 'string' ? parseInt(recipe.servings, 10) || 4 : recipe.servings ?? 4,
+    difficulty: recipe.difficulty || 'Medium',
+    instructions: Array.isArray(recipe.instructions)
+      ? recipe.instructions
+      : typeof recipe.instructions === 'string'
+        ? [recipe.instructions]
+        : [],
+    ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients : [],
+    nutrition: typeof recipe.nutrition === 'string' ? JSON.parse(recipe.nutrition) : (recipe.nutrition || {}),
+    // Add any other field mappings as needed
+  };
+}
 
 export default function RecipesScreen({ navigation }: RecipesScreenProps) {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -18,7 +46,10 @@ export default function RecipesScreen({ navigation }: RecipesScreenProps) {
   const [importUrl, setImportUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [serverAvailable, setServerAvailable] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const initialize = async () => {
@@ -27,11 +58,22 @@ export default function RecipesScreen({ navigation }: RecipesScreenProps) {
         await initDatabase();
         console.log('=== DATABASE INITIALIZED ===');
         await loadRecipes();
+        await checkServerStatus();
       } catch (error) {
         console.error('Error initializing database:', error);
       }
     };
     initialize();
+
+    // Set up periodic server check and sync
+    const interval = setInterval(async () => {
+      await checkServerStatus();
+      if (serverAvailable) {
+        await syncRecipes();
+      }
+    }, 30000); // Check every 30 seconds
+
+    return () => clearInterval(interval);
   }, []);
 
   const loadRecipes = async () => {
@@ -74,6 +116,25 @@ export default function RecipesScreen({ navigation }: RecipesScreenProps) {
     }
   };
 
+  const checkServerStatus = async () => {
+    const isAvailable = await checkServerAvailability();
+    setServerAvailable(isAvailable);
+  };
+
+  const syncRecipes = async () => {
+    if (!serverAvailable || syncing) return;
+    
+    try {
+      setSyncing(true);
+      await syncPendingRecipes(recipes);
+      await loadRecipes(); // Reload recipes after sync
+    } catch (error) {
+      console.error('Error syncing recipes:', error);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const handleImportRecipe = async () => {
     try {
       console.log('=== STARTING RECIPE IMPORT ===');
@@ -85,11 +146,13 @@ export default function RecipesScreen({ navigation }: RecipesScreenProps) {
       }
 
       console.log('Importing recipe from URL:', importUrl);
-      const importedRecipe = await importRecipeFromUrl(importUrl);
+      const importedRecipe = await importRecipeWithFallback(importUrl);
       console.log('Imported recipe data:', importedRecipe);
-      
+      // Normalize fields from server to client model
+      const normalizedRecipe = normalizeRecipe(importedRecipe);
+      console.log('Normalized recipe:', normalizedRecipe);
       console.log('Adding recipe to database...');
-      await addRecipe(importedRecipe);
+      await addRecipe(normalizedRecipe);
       console.log('Recipe added to database successfully');
       
       console.log('Reloading recipes...');
@@ -117,28 +180,31 @@ export default function RecipesScreen({ navigation }: RecipesScreenProps) {
   const nonFavoriteRecipes = filteredRecipes.filter(recipe => !recipe.is_favorite);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Surface style={styles.header} elevation={4}>
-        <Title style={styles.headerTitle}>My Recipes</Title>
-        <View style={styles.headerActions}>
-          <Button
-            mode="contained"
-            onPress={() => navigation.navigate('AddRecipe', { recipe: undefined })}
-            style={styles.addButton}
-          >
-            New Recipe
-          </Button>
-          <Button
-            mode="outlined"
-            onPress={() => setImportDialogVisible(true)}
-            style={styles.importButton}
-          >
-            Import from URL
-          </Button>
-        </View>
-      </Surface>
+    <SafeAreaView style={[styles.container, { flex: 1, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 16, paddingBottom: insets.bottom + 24 }}>
+        <Surface style={styles.header} elevation={4}>
+          <Title style={styles.headerTitle}>My Recipes</Title>
+          <View style={styles.headerActions}>
+            <Button
+              mode="contained"
+              onPress={() => navigation.navigate('AddRecipe', { recipe: undefined })}
+              style={styles.addButton}
+            >
+              New Recipe
+            </Button>
+            <Button
+              mode="outlined"
+              onPress={() => setImportDialogVisible(true)}
+              style={styles.importButton}
+            >
+              Import from URL
+            </Button>
+          </View>
+          {!serverAvailable && (
+            <Text style={styles.offlineText}>Working Offline</Text>
+          )}
+        </Surface>
 
-      <ScrollView style={styles.recipesContainer}>
         {favoriteRecipes.length > 0 && (
           <View style={styles.section}>
             <Title style={[styles.sectionTitle, { color: theme.colors.primary }]}>
@@ -286,5 +352,33 @@ const styles = StyleSheet.create({
   errorText: {
     color: 'red',
     marginTop: 8,
+  },
+  ingredientsContainer: {
+    marginTop: 8,
+  },
+  ingredientsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 4,
+  },
+  ingredientsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  ingredientChip: {
+    backgroundColor: '#f0f0f0',
+    marginRight: 4,
+    marginBottom: 4,
+  },
+  ingredientChipText: {
+    fontSize: 12,
+    color: '#333',
+  },
+  offlineText: {
+    color: 'red',
+    fontSize: 12,
+    marginTop: 4,
   },
 }); 
