@@ -8,6 +8,7 @@ export interface Recipe {
   servings: number;
   imageUrl?: string;
   category: string;
+  food_type: 'veg' | 'non-veg';
   is_favorite: boolean;
   difficulty: string;
   rating: number;
@@ -16,14 +17,30 @@ export interface Recipe {
   storage_instructions?: string;
   cost_per_serving: number;
   nutrition: {
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
+    calories: number | string;
+    protein: number | string;
+    carbs: number | string;
+    fat: number | string;
+    fiber?: number | string;
+    sugar?: number | string;
   };
   comments: string[];
   created_at?: string;
   updated_at?: string;
+  ingredients: Array<{
+    name: string;
+    quantity: string;
+    unit: string;
+  }>;
+  ingredientGroups?: Array<{
+    heading?: string;
+    ingredients: Array<{
+      name: string;
+      quantity: string;
+      unit: string;
+    }>;
+  }>;
+  pendingSync?: boolean;
 }
 
 export interface InventoryItem {
@@ -39,7 +56,7 @@ export interface InventoryItem {
 }
 
 export interface ShoppingList {
-  id?: number;
+  id: number;
   name: string;
   date?: string;
   completed: boolean;
@@ -47,7 +64,7 @@ export interface ShoppingList {
 }
 
 export interface ShoppingListItem {
-  id?: number;
+  id: number;
   listId: number;
   name: string;
   quantity: number;

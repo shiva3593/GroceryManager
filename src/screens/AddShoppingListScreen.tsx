@@ -28,14 +28,18 @@ export default function AddShoppingListScreen() {
     }
 
     try {
-      const list: ShoppingList = {
+      const list: Omit<ShoppingList, 'id'> = {
         name: name.trim(),
         date: new Date().toISOString(),
         completed: false,
       };
 
       if (route.params?.list?.id) {
-        await updateShoppingList({ ...list, id: route.params.list.id });
+        const updatedList: ShoppingList = { ...list, id: route.params.list.id };
+        await updateShoppingList(updatedList);
+        if (route.params?.onEdit) {
+          route.params.onEdit(updatedList);
+        }
       } else {
         await addShoppingList(list);
       }

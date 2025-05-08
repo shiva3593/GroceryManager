@@ -1,19 +1,16 @@
 import express from 'express';
-import { registerRoutes } from './routes';
+// Use .ts extension for ESM + ts-node compatibility
+import { registerRoutes } from './routes.ts';
 import https from 'https';
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { initializeDatabase } from './index';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function startServer() {
-  // Initialize database
-  await initializeDatabase();
-
   // Create Express app
   const app = express();
   app.use(express.json());
@@ -29,8 +26,8 @@ async function startServer() {
   };
 
   // Start both HTTP and HTTPS servers
-  const PORT = 5001;
-  const HTTP_PORT = 5000;
+  const PORT = 3001;
+  const HTTP_PORT = 3000;
 
   // Create HTTPS server
   const httpsServer = https.createServer(options, app);

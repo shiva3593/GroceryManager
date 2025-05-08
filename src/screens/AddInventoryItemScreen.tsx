@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { InventoryItem } from '../services/database';
+import { InventoryItem, addInventoryItem } from '../services/database';
 import { RootStackParamList } from '../navigation/types';
 import AddInventoryItemModal from '../components/AddInventoryItemModal';
 
@@ -17,9 +17,9 @@ export default function AddInventoryItemScreen() {
   };
 
   const handleSave = async (item: Omit<InventoryItem, 'id'>) => {
-    // Save logic: you may want to call your addInventoryItem or updateInventoryItem here
-    // For now, just go back
-    navigation.goBack();
+    // Save logic: call addInventoryItem to save to local DB
+    await addInventoryItem(item);
+    navigation.navigate('Inventory', { reload: Date.now() });
   };
 
   return (

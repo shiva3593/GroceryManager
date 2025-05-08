@@ -1,5 +1,5 @@
 import { db } from './db';
-import { users } from '@shared/schema';
+import { users } from '../shared/schema.ts';
 import bcrypt from 'bcryptjs';
 
 async function createAdminUser() {

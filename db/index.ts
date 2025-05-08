@@ -1,6 +1,6 @@
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import * as schema from "@shared/schema";
+import * as schema from "../shared/schema.ts";
 
 // Get the connection string from environment variable
 const connectionString = process.env.DATABASE_URL;

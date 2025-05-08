@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import * as schema from '@shared/schema';
+import * as schema from '../shared/schema.ts';
 
 // Get database URL from environment variable or use default
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/grocerymanager';

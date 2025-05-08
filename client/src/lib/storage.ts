@@ -1,4 +1,4 @@
-import { Recipe, InventoryItem } from "@shared/schema";
+import { Recipe, InventoryItem } from "../../../shared/schema.ts";
 
 class Storage {
   private baseUrl = "/api";

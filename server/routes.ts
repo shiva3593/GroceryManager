@@ -1,13 +1,14 @@
-import type { Express } from "express";
-import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import express from 'express';
+import type { Request, Response } from 'express';
+import { Server, createServer } from 'http';
+import { storage } from "./storage.ts";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { db } from "../db";
-import { users } from "@shared/schema";
+import { db } from "./db.ts";
+import { users } from "../shared/schema.ts";
 import { eq } from "drizzle-orm";
 import { networkInterfaces } from 'os';
-import { lookupBarcodeInfo } from './barcode-utils';
+import { lookupBarcodeInfo } from './barcode-utils.ts';
 
 
 // Function to get the server's local network IP address
@@ -60,6 +61,11 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 // User operations moved to database
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Health check endpoint
+  app.get("/api/health", (req: Request, res: Response) => {
+    res.status(200).json({ status: "ok" });
+  });
+
   // Auth routes
   app.post("/api/auth/register", async (req, res) => {
     try {
@@ -197,6 +203,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/recipes/import", async (req, res) => {
+    console.log('[SERVER SCRAPER] /api/recipes/import called for URL:', req.body?.url);
     try {
       const { url } = req.body;
       if (!url) {

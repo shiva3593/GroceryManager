@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { shoppingItems } from '@shared/schema';
+import { shoppingItems } from '../../shared/schema.ts';
 
 // Define food categories and their typical storage locations
 const FOOD_CATEGORIES = {

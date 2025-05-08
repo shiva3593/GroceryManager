@@ -1,6 +1,6 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import { InventoryItem } from '@shared/schema';
+import type { InventoryItem } from '../shared/schema.ts';
 
 // Helper function to extract product details from HTML using Cheerio
 function extractProductFromHtml(html: string, barcode: string): Partial<InventoryItem> | null {

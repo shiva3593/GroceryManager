@@ -8,26 +8,29 @@ import type {
   SyncStatus,
 } from '../types/database';
 
-// Define SQLite types
-type SQLiteRunResult = {
-  insertId?: number;
-  rowsAffected: number;
-};
-
-type SQLiteQueryResult = {
-  rows: {
-    _array: any[];
-    length: number;
-    item: (index: number) => any;
-  };
-};
-
-type SQLError = Error;
-
 // Define Category type
 interface Category {
   id?: number;
   name: string;
+}
+
+// Utility to ensure a column exists in a table, and add it if missing
+export async function ensureColumnExists(table: string, column: string, typeAndDefault: string) {
+  return new Promise<void>((resolve, reject) => {
+    const db = SQLite.openDatabaseSync('GroceryManager.db');
+    db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`)
+      .then((rows) => {
+        const exists = rows.some(row => row.name === column);
+        if (!exists) {
+          return db.runAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${typeAndDefault}`);
+        }
+      })
+      .then(() => resolve())
+      .catch((error) => {
+        console.error(error);
+        reject(error);
+      });
+  });
 }
 
 class DatabaseService {
@@ -35,6 +38,12 @@ class DatabaseService {
 
   async initDatabase() {
     try {
+      // --- MIGRATION: Ensure all required columns exist before anything else ---
+      await ensureColumnExists('shopping_lists', 'last_synced', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
+      await ensureColumnExists('inventory', 'last_synced', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
+      await ensureColumnExists('cook_maps', 'last_synced', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
+      await ensureColumnExists('recipes', 'last_synced', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
+      // --- END MIGRATION ---
       console.log('Opening database...');
       this.database = SQLite.openDatabaseSync('GroceryManager.db');
       console.log('Database opened successfully');
@@ -63,6 +72,7 @@ class DatabaseService {
         servings INTEGER DEFAULT 1,
         imageUrl TEXT,
         category TEXT,
+        food_type TEXT DEFAULT 'veg',
         is_favorite INTEGER DEFAULT 0,
         difficulty TEXT DEFAULT 'Easy',
         rating REAL DEFAULT 0,
@@ -78,9 +88,22 @@ class DatabaseService {
       );
     `;
 
+    // Create recipe_ingredients table
+    const createRecipeIngredientsTable = `
+      CREATE TABLE IF NOT EXISTS recipe_ingredients (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        recipe_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        unit TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (recipe_id) REFERENCES recipes (id) ON DELETE CASCADE
+      );
+    `;
+
     // Create inventory table
     const createInventoryTable = `
-      CREATE TABLE IF NOT EXISTS inventory (
+      CREATE TABLE IF NOT EXISTS inventory_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         quantity REAL NOT NULL,
@@ -89,6 +112,7 @@ class DatabaseService {
         expiryDate TEXT,
         location TEXT,
         minQuantity REAL DEFAULT 0,
+        last_synced DATETIME DEFAULT CURRENT_TIMESTAMP,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `;
@@ -100,7 +124,9 @@ class DatabaseService {
         name TEXT NOT NULL,
         date TEXT,
         completed INTEGER DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        last_synced DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `;
 
@@ -114,7 +140,9 @@ class DatabaseService {
         unit TEXT,
         category TEXT,
         completed INTEGER DEFAULT 0,
+        last_synced DATETIME DEFAULT CURRENT_TIMESTAMP,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (listId) REFERENCES shopping_lists (id) ON DELETE CASCADE
       );
     `;
@@ -125,7 +153,9 @@ class DatabaseService {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         description TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        last_synced DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `;
 
@@ -136,19 +166,28 @@ class DatabaseService {
         map_id INTEGER NOT NULL,
         description TEXT NOT NULL,
         step_order INTEGER NOT NULL,
+        last_synced DATETIME DEFAULT CURRENT_TIMESTAMP,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (map_id) REFERENCES cook_maps (id) ON DELETE CASCADE
       );
     `;
 
     try {
       console.log('Creating tables...');
-      await this.executeQuery(createRecipesTable);
-      await this.executeQuery(createInventoryTable);
-      await this.executeQuery(createShoppingListsTable);
-      await this.executeQuery(createShoppingListItemsTable);
-      await this.executeQuery(createCookMapsTable);
-      await this.executeQuery(createCookMapStepsTable);
+      const queries = [
+        createRecipesTable,
+        createRecipeIngredientsTable,
+        createInventoryTable,
+        createShoppingListsTable,
+        createShoppingListItemsTable,
+        createCookMapsTable,
+        createCookMapStepsTable
+      ];
+
+      for (const query of queries) {
+        await this.database.execAsync(query);
+      }
       console.log('Tables created successfully');
     } catch (error) {
       console.error('Error creating tables:', error);
@@ -164,28 +203,42 @@ class DatabaseService {
     try {
       console.log('Checking for necessary migrations...');
       
-      // Check if last_synced column exists in recipes table
-      const checkLastSynced = await this.executeQuery<any>(
-        "SELECT * FROM pragma_table_info('recipes') WHERE name='last_synced'"
-      );
+      // Add last_synced column to all tables if missing
+      const tables = ['recipes', 'inventory_items', 'shopping_lists', 'shopping_list_items', 'cook_maps', 'cook_map_steps'];
       
-      if (checkLastSynced.length === 0) {
-        console.log('Adding last_synced column to recipes table...');
-        await this.executeUpdate(
-          'ALTER TABLE recipes ADD COLUMN last_synced DATETIME DEFAULT CURRENT_TIMESTAMP'
+      for (const table of tables) {
+        const rows = await this.database.getAllAsync<{ name: string }>(
+          `SELECT * FROM pragma_table_info('${table}') WHERE name='last_synced'`
         );
-      }
+        
+        if (rows.length === 0) {
+          console.log(`Adding last_synced column to ${table} table...`);
+          // First add the column without default
+          await this.database.runAsync(
+            `ALTER TABLE ${table} ADD COLUMN last_synced DATETIME`
+          );
+          // Then update existing rows with current timestamp
+          await this.database.runAsync(
+            `UPDATE ${table} SET last_synced = datetime('now')`
+          );
+        }
 
-      // Check if updated_at column exists in recipes table
-      const checkUpdatedAt = await this.executeQuery<any>(
-        "SELECT * FROM pragma_table_info('recipes') WHERE name='updated_at'"
-      );
-      
-      if (checkUpdatedAt.length === 0) {
-        console.log('Adding updated_at column to recipes table...');
-        await this.executeUpdate(
-          'ALTER TABLE recipes ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP'
+        // Add updated_at column if missing
+        const updatedAtRows = await this.database.getAllAsync<{ name: string }>(
+          `SELECT * FROM pragma_table_info('${table}') WHERE name='updated_at'`
         );
+        
+        if (updatedAtRows.length === 0) {
+          console.log(`Adding updated_at column to ${table} table...`);
+          // First add the column without default
+          await this.database.runAsync(
+            `ALTER TABLE ${table} ADD COLUMN updated_at DATETIME`
+          );
+          // Then update existing rows with current timestamp
+          await this.database.runAsync(
+            `UPDATE ${table} SET updated_at = datetime('now')`
+          );
+        }
       }
 
       console.log('Migrations completed successfully');
@@ -227,14 +280,14 @@ class DatabaseService {
 
   // Recipe operations
   async addRecipe(recipe: Recipe): Promise<number> {
-    const { id, ...recipeData } = recipe;
+    const { id, ingredients, ...recipeData } = recipe;
     const result = await this.executeUpdate(
       `INSERT INTO recipes (
         name, description, prepTime, cookTime, servings, category, 
         instructions, nutrition, storage_instructions, is_favorite, 
         difficulty, rating, rating_count, url, cost_per_serving, 
-        comments, last_synced
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        comments, food_type, last_synced
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         recipeData.name,
         recipeData.description,
@@ -243,7 +296,14 @@ class DatabaseService {
         recipeData.servings,
         recipeData.category,
         JSON.stringify(recipeData.instructions),
-        JSON.stringify(recipeData.nutrition),
+        JSON.stringify({
+          calories: recipeData.nutrition?.calories ?? 'None',
+          protein: recipeData.nutrition?.protein ?? 'None',
+          carbs: recipeData.nutrition?.carbs ?? 'None',
+          fat: recipeData.nutrition?.fat ?? 'None',
+          fiber: recipeData.nutrition?.fiber ?? 'None',
+          sugar: recipeData.nutrition?.sugar ?? 'None',
+        }),
         recipeData.storage_instructions,
         recipeData.is_favorite ? 1 : 0,
         recipeData.difficulty,
@@ -252,10 +312,24 @@ class DatabaseService {
         recipeData.url,
         recipeData.cost_per_serving,
         JSON.stringify(recipeData.comments),
+        recipeData.food_type || 'veg',
         new Date().toISOString()
       ]
     );
-    return result.lastInsertRowId;
+
+    const recipeId = result.lastInsertRowId;
+
+    // Add ingredients if they exist
+    if (ingredients && ingredients.length > 0) {
+      for (const ingredient of ingredients) {
+        await this.executeUpdate(
+          `INSERT INTO recipe_ingredients (recipe_id, name, quantity, unit) VALUES (?, ?, ?, ?)`,
+          [recipeId, ingredient.name, ingredient.quantity, ingredient.unit]
+        );
+      }
+    }
+
+    return recipeId;
   }
 
   async getRecipes(): Promise<Recipe[]> {
@@ -266,8 +340,14 @@ class DatabaseService {
         return [];
       }
 
-      const recipes = rows.map((row: any) => {
+      const recipes = await Promise.all(rows.map(async (row: any) => {
         try {
+          // Get ingredients for this recipe
+          const ingredients = await this.executeQuery<any>(
+            'SELECT name, quantity, unit FROM recipe_ingredients WHERE recipe_id = ?',
+            [row.id]
+          );
+
           return {
             id: row.id ?? 0,
             name: row.name,
@@ -285,18 +365,29 @@ class DatabaseService {
             url: row.url,
             storage_instructions: row.storage_instructions,
             cost_per_serving: row.cost_per_serving || 0,
-            nutrition: JSON.parse(row.nutrition || '{"calories":0,"protein":0,"carbs":0,"fat":0}'),
+            nutrition: (() => {
+              const n = JSON.parse(row.nutrition || '{"calories":0,"protein":0,"carbs":0,"fat":0}');
+              return {
+                calories: n.calories ?? 'None',
+                protein: n.protein ?? 'None',
+                carbs: n.carbs ?? 'None',
+                fat: n.fat ?? 'None',
+                fiber: n.fiber ?? 'None',
+                sugar: n.sugar ?? 'None',
+              };
+            })(),
             comments: JSON.parse(row.comments || '[]'),
             created_at: row.created_at,
-            updated_at: row.updated_at
+            updated_at: row.updated_at,
+            ingredients: ingredients || []
           } as Recipe;
         } catch (error) {
           console.error('Error processing recipe row:', error);
           return null;
         }
-      }).filter((recipe): recipe is Recipe => recipe !== null);
+      }));
 
-      return recipes;
+      return recipes.filter((recipe): recipe is Recipe => recipe !== null);
     } catch (error) {
       console.error('Error getting recipes:', error);
       return [];
@@ -306,9 +397,10 @@ class DatabaseService {
   // Inventory operations
   async addInventoryItem(item: ImportedInventoryItem): Promise<number> {
     const { id, ...itemData } = item;
+    console.log('Adding inventory item:', itemData);
     const result = await this.executeUpdate(
-      `INSERT INTO inventory (name, quantity, unit, category, location, expiryDate, last_synced)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO inventory_items (name, quantity, unit, category, location, expiryDate, minQuantity, last_synced)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         itemData.name,
         itemData.quantity,
@@ -316,14 +408,19 @@ class DatabaseService {
         itemData.category,
         itemData.location,
         itemData.expiryDate,
+        itemData.minQuantity || 0,
         new Date().toISOString(),
       ]
     );
+    console.log('Item added successfully with ID:', result.lastInsertRowId);
     return result.lastInsertRowId;
   }
 
   async getInventoryItems(): Promise<ImportedInventoryItem[]> {
-    return await this.executeQuery<ImportedInventoryItem>('SELECT * FROM inventory');
+    console.log('Fetching inventory items...');
+    const items = await this.executeQuery<ImportedInventoryItem>('SELECT * FROM inventory_items');
+    console.log('Retrieved items:', items);
+    return items;
   }
 
   // Shopping List operations
@@ -411,6 +508,13 @@ class DatabaseService {
       pendingChanges: Boolean(row?.pendingChanges),
     };
   }
+
+  async getShoppingListItems(listId: number): Promise<ImportedShoppingListItem[]> {
+    return await this.executeQuery<ImportedShoppingListItem>(
+      'SELECT * FROM shopping_list_items WHERE listId = ?',
+      [listId]
+    );
+  }
 }
 
 export const databaseService = new DatabaseService();
@@ -462,92 +566,49 @@ export const addRecipe = async (recipe: Recipe): Promise<number> => {
 };
 
 // Item operations
-export const addItem = (item: ImportedInventoryItem): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    const sql = 'INSERT INTO items (name, quantity, category) VALUES (?, ?, ?)';
-    databaseService.executeUpdate(sql, [item.name, item.quantity, item.category])
-      .then(() => resolve())
-      .catch((error: SQLError) => reject(error));
-  });
+export const addItem = async (item: ImportedInventoryItem): Promise<void> => {
+  const sql = 'INSERT INTO items (name, quantity, category) VALUES (?, ?, ?)';
+  await databaseService.executeUpdate(sql, [item.name, item.quantity, item.category]);
 };
 
-export const getItems = (): Promise<ImportedInventoryItem[]> => {
-  return new Promise((resolve, reject) => {
-    databaseService.executeQuery<ImportedInventoryItem>('SELECT * FROM items')
-      .then((items) => resolve(items))
-      .catch((error: SQLError) => reject(error));
-  });
+export const getItems = async (): Promise<ImportedInventoryItem[]> => {
+  return await databaseService.executeQuery<ImportedInventoryItem>('SELECT * FROM items');
 };
 
-export const updateItem = (item: ImportedInventoryItem): Promise<void> => {
+export const updateItem = async (item: ImportedInventoryItem): Promise<void> => {
   if (!item.id) {
-    return Promise.reject(new Error('Item ID is required for update'));
+    throw new Error('Item ID is required for update');
   }
-  return new Promise((resolve, reject) => {
-    const sql = 'UPDATE items SET name = ?, quantity = ?, category = ? WHERE id = ?';
-    databaseService.executeUpdate(sql, [item.name, item.quantity, item.category, item.id])
-      .then(() => resolve())
-      .catch((error: SQLError) => reject(error));
-  });
+  const sql = 'UPDATE items SET name = ?, quantity = ?, category = ? WHERE id = ?';
+  await databaseService.executeUpdate(sql, [item.name, item.quantity, item.category, item.id]);
 };
 
-export const deleteItem = (id: number): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    databaseService.executeQuery('DELETE FROM items WHERE id = ' + id).then(() => {
-      resolve();
-    }).catch((error: SQLError) => {
-      console.error('Error deleting item:', error);
-      reject(error);
-    });
-  });
+export const deleteItem = async (id: number): Promise<void> => {
+  await databaseService.executeQuery('DELETE FROM items WHERE id = ?', [id]);
 };
 
 // Category operations
-export const addCategory = (category: Category): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    databaseService.executeQuery('INSERT INTO categories (name) VALUES ("' + category.name + '")').then(() => {
-      resolve();
-    }).catch((error: SQLError) => {
-      console.error('Error adding category:', error);
-      reject(error);
-    });
-  });
+export const addCategory = async (category: Category): Promise<void> => {
+  await databaseService.executeUpdate('INSERT INTO categories (name) VALUES (?)', [category.name]);
 };
 
-export const getCategories = (): Promise<Category[]> => {
-  return new Promise((resolve, reject) => {
-    databaseService.executeQuery('SELECT * FROM categories').then((result: any) => {
-      if (result && result[0] && result[0].rows) {
-        resolve(result[0].rows._array);
-      } else {
-        resolve([]); // Return empty array if no results
-      }
-    }).catch((error: SQLError) => {
-      console.error('Error getting categories:', error);
-      reject(error);
-    });
-  });
+export const getCategories = async (): Promise<Category[]> => {
+  return await databaseService.executeQuery<Category>('SELECT * FROM categories');
 };
 
-export const deleteCategory = (id: number): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    databaseService.executeQuery('DELETE FROM categories WHERE id = ' + id).then(() => {
-      resolve();
-    }).catch((error: SQLError) => {
-      console.error('Error deleting category:', error);
-      reject(error);
-    });
-  });
+export const deleteCategory = async (id: number): Promise<void> => {
+  await databaseService.executeQuery('DELETE FROM categories WHERE id = ?', [id]);
 };
 
 // Recipe operations
-export const updateRecipe = (recipe: Recipe): Promise<void> => {
+export const updateRecipe = async (recipe: Recipe): Promise<void> => {
   if (!recipe.id) {
     return Promise.reject(new Error('Recipe ID is required for update'));
   }
-  return new Promise((resolve, reject) => {
+  try {
+    // Update main recipe info
     const sql = 'UPDATE recipes SET name = ?, description = ?, instructions = ?, prepTime = ?, cookTime = ?, servings = ?, category = ?, is_favorite = ? WHERE id = ?';
-    databaseService.executeUpdate(sql, [
+    await databaseService.executeUpdate(sql, [
       recipe.name,
       recipe.description,
       JSON.stringify(recipe.instructions),
@@ -555,36 +616,34 @@ export const updateRecipe = (recipe: Recipe): Promise<void> => {
       recipe.cookTime,
       recipe.servings,
       recipe.category,
-      recipe.is_favorite,
+      recipe.is_favorite ? 1 : 0,
       recipe.id
-    ])
-      .then(() => resolve())
-      .catch((error: SQLError) => reject(error));
-  });
+    ]);
+
+    // Update ingredients: delete all and re-insert
+    await databaseService.executeUpdate('DELETE FROM recipe_ingredients WHERE recipe_id = ?', [recipe.id]);
+    if (recipe.ingredients && recipe.ingredients.length > 0) {
+      for (const ingredient of recipe.ingredients) {
+        await databaseService.executeUpdate(
+          'INSERT INTO recipe_ingredients (recipe_id, name, quantity, unit) VALUES (?, ?, ?, ?)',
+          [recipe.id, ingredient.name, ingredient.quantity, ingredient.unit]
+        );
+      }
+    }
+    return;
+  } catch (error) {
+    console.error('Error updating recipe:', error);
+    throw error;
+  }
 };
 
-export const deleteRecipe = (id: number): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    databaseService.executeQuery('DELETE FROM recipes WHERE id = ' + id).then(() => {
-      resolve();
-    }).catch((error: SQLError) => {
-      console.error('Error deleting recipe:', error);
-      reject(error);
-    });
-  });
+export const deleteRecipe = async (id: number): Promise<void> => {
+  await databaseService.executeQuery('DELETE FROM recipes WHERE id = ?', [id]);
 };
 
-export const toggleFavorite = (id: number, isFavorite: boolean): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    const sql = 'UPDATE recipes SET is_favorite = ? WHERE id = ?';
-    const args = [isFavorite ? 1 : 0, id];
-    databaseService.executeQuery(sql + ';' + args.join(';')).then(() => {
-      resolve();
-    }).catch((error: SQLError) => {
-      console.error('Error toggling favorite:', error);
-      reject(error);
-    });
-  });
+export const toggleFavorite = async (id: number, isFavorite: boolean): Promise<void> => {
+  const sql = 'UPDATE recipes SET is_favorite = ? WHERE id = ?';
+  await databaseService.executeQuery(sql, [isFavorite ? 1 : 0, id]);
 };
 
 // Inventory operations
@@ -593,7 +652,7 @@ export const updateInventoryItem = (item: ImportedInventoryItem): Promise<void> 
     return Promise.reject(new Error('Item ID is required for update'));
   }
   return new Promise((resolve, reject) => {
-    const sql = 'UPDATE inventory SET name = ?, quantity = ?, unit = ?, category = ?, expiryDate = ?, location = ?, minQuantity = ? WHERE id = ?';
+    const sql = 'UPDATE inventory_items SET name = ?, quantity = ?, unit = ?, category = ?, expiryDate = ?, location = ?, minQuantity = ? WHERE id = ?';
     databaseService.executeUpdate(sql, [
       item.name,
       item.quantity,
@@ -605,19 +664,12 @@ export const updateInventoryItem = (item: ImportedInventoryItem): Promise<void> 
       item.id
     ])
       .then(() => resolve())
-      .catch((error: SQLError) => reject(error));
+      .catch((error) => reject(error));
   });
 };
 
-export const deleteInventoryItem = (id: number): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    databaseService.executeQuery('DELETE FROM inventory WHERE id = ' + id).then(() => {
-      resolve();
-    }).catch((error: SQLError) => {
-      console.error('Error deleting inventory item:', error);
-      reject(error);
-    });
-  });
+export const deleteInventoryItem = async (id: number): Promise<void> => {
+  await databaseService.executeQuery('DELETE FROM inventory_items WHERE id = ?', [id]);
 };
 
 // Shopping list operations
@@ -634,19 +686,12 @@ export const updateShoppingList = (list: ImportedShoppingList): Promise<void> =>
       list.id
     ])
       .then(() => resolve())
-      .catch((error: SQLError) => reject(error));
+      .catch((error) => reject(error));
   });
 };
 
-export const deleteShoppingList = (id: number): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    databaseService.executeQuery('DELETE FROM shopping_lists WHERE id = ' + id).then(() => {
-      resolve();
-    }).catch((error: SQLError) => {
-      console.error('Error deleting shopping list:', error);
-      reject(error);
-    });
-  });
+export const deleteShoppingList = async (id: number): Promise<void> => {
+  await databaseService.executeQuery('DELETE FROM shopping_lists WHERE id = ?', [id]);
 };
 
 // Shopping list item operations
@@ -666,19 +711,12 @@ export const updateShoppingListItem = (item: ImportedShoppingListItem): Promise<
       item.id
     ])
       .then(() => resolve())
-      .catch((error: SQLError) => reject(error));
+      .catch((error) => reject(error));
   });
 };
 
-export const deleteShoppingListItem = (id: number): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    databaseService.executeQuery('DELETE FROM shopping_list_items WHERE id = ' + id).then(() => {
-      resolve();
-    }).catch((error: SQLError) => {
-      console.error('Error deleting shopping list item:', error);
-      reject(error);
-    });
-  });
+export const deleteShoppingListItem = async (id: number): Promise<void> => {
+  await databaseService.executeQuery('DELETE FROM shopping_list_items WHERE id = ?', [id]);
 };
 
 // Cook map operations
@@ -688,7 +726,7 @@ export const addCookMapStep = (mapId: number, step: { description: string; order
     const args = [mapId, step.description, step.order];
     databaseService.executeQuery(sql + ';' + args.join(';')).then(() => {
       resolve();
-    }).catch((error: SQLError) => {
+    }).catch((error) => {
       console.error('Error adding cook map step:', error);
       reject(error);
     });
@@ -701,20 +739,128 @@ export const updateCookMapStep = (id: number, step: { description: string; order
     const args = [step.description, step.order, id];
     databaseService.executeQuery(sql + ';' + args.join(';')).then(() => {
       resolve();
-    }).catch((error: SQLError) => {
+    }).catch((error) => {
       console.error('Error updating cook map step:', error);
       reject(error);
     });
   });
 };
 
-export const deleteCookMapStep = (id: number): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    databaseService.executeQuery('DELETE FROM cook_map_steps WHERE id = ?;' + id).then(() => {
-      resolve();
-    }).catch((error: SQLError) => {
-      console.error('Error deleting cook map step:', error);
-      reject(error);
-    });
+export const deleteCookMapStep = async (id: number): Promise<void> => {
+  await databaseService.executeQuery('DELETE FROM cook_map_steps WHERE id = ?', [id]);
+};
+
+export const getInventoryItems = async (): Promise<ImportedInventoryItem[]> => {
+  return await databaseService.getInventoryItems();
+};
+
+export const addInventoryItem = async (item: ImportedInventoryItem): Promise<number> => {
+  return await databaseService.addInventoryItem(item);
+};
+
+export const getShoppingLists = async (): Promise<ImportedShoppingList[]> => {
+  return await databaseService.getShoppingLists();
+};
+
+export const getCookMaps = async (): Promise<ImportedCookMap[]> => {
+  return await databaseService.getCookMaps();
+};
+
+// Helper: Normalize ingredient/inventory names for fuzzy matching
+function normalizeName(name: string): string {
+  let normalized = name.toLowerCase().trim();
+  normalized = normalized.replace(/^(fresh|frozen|organic|natural|raw|cooked|dried|ground|chopped|diced|sliced|grated|minced)\s+/g, '');
+  normalized = normalized.replace(/\s+(powder|paste|sauce|extract|concentrate|juice)$/g, '');
+  if (normalized.endsWith('s') && normalized.length > 3) {
+    normalized = normalized.slice(0, -1);
+  }
+  return normalized;
+}
+
+// Helper: Fuzzy match ingredient to inventory
+function isInInventory(ingredientName: string, inventoryNames: string[]): boolean {
+  const normIng = normalizeName(ingredientName);
+  // Exact match
+  if (inventoryNames.some(inv => normalizeName(inv) === normIng)) return true;
+  // Contains match
+  if (inventoryNames.some(inv => normalizeName(inv).includes(normIng) || normIng.includes(normalizeName(inv)))) return true;
+  // Word overlap
+  const ingWords = normIng.split(' ');
+  return inventoryNames.some(inv => {
+    const invWords = normalizeName(inv).split(' ');
+    return ingWords.some(word => word.length > 3 && invWords.includes(word));
   });
+}
+
+export const addRecipeToShoppingList = async (recipe: Recipe, listId?: number) => {
+  // 1. Find or create an active shopping list
+  let targetListId = listId;
+  if (!targetListId) {
+    const lists = await getShoppingLists();
+    let activeList = lists.find(l => !l.completed);
+    if (!activeList) {
+      // Create a new shopping list
+      const newList = {
+        name: 'My Shopping List',
+        completed: false,
+        date: new Date().toISOString(),
+      };
+      const newListId = await databaseService.addShoppingList(newList as ImportedShoppingList);
+      targetListId = newListId;
+    } else {
+      targetListId = activeList.id;
+    }
+  }
+  if (!targetListId) throw new Error('Could not determine shopping list ID');
+
+  // Fetch inventory items for fuzzy matching (still used in UI, not for filtering here)
+  // const inventoryItems = await databaseService.getInventoryItems();
+  // const inventoryNames = inventoryItems.map(item => item.name);
+
+  // Debug log: print all ingredients being considered
+  console.log('Ingredients to add (no inventory filter):', recipe.ingredients);
+
+  // Add all ingredients with a name
+  const validIngredients = recipe.ingredients.filter(ing => ing.name);
+  if (validIngredients.length > 0) {
+    const now = new Date().toISOString();
+    const placeholders = validIngredients.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ');
+    const values = validIngredients.flatMap(ing => [
+      targetListId,
+      ing.name,
+      isNaN(parseFloat(ing.quantity)) ? 1 : parseFloat(ing.quantity),
+      ing.unit || 'unit',
+      recipe.category || 'Other',
+      0,
+      now
+    ]);
+    await databaseService.executeUpdate(
+      `INSERT INTO shopping_list_items (listId, name, quantity, unit, category, completed, created_at) VALUES ${placeholders}`,
+      values
+    );
+  }
+};
+
+export const getShoppingListItems = async (listId: number): Promise<ImportedShoppingListItem[]> => {
+  return await databaseService.getShoppingListItems(listId);
+};
+
+export const addShoppingListItem = async (item: ImportedShoppingListItem): Promise<number> => {
+  const result = await databaseService.executeUpdate(
+    `INSERT INTO shopping_list_items (listId, name, quantity, unit, category, completed, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      item.listId,
+      item.name,
+      item.quantity,
+      item.unit,
+      item.category || 'Uncategorized',
+      item.completed ? 1 : 0,
+      new Date().toISOString()
+    ]
+  );
+  return result.lastInsertRowId;
+};
+
+export const addShoppingList = async (list: ImportedShoppingList): Promise<number> => {
+  return await databaseService.addShoppingList(list);
 }; 

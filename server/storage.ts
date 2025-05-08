@@ -1,9 +1,11 @@
-import { db } from "@db";
+import { db } from "./db.ts";
 import { 
   recipes,
   recipeIngredients,
   inventoryItems,
-  shoppingItems,
+  shoppingItems
+} from "../shared/schema.ts";
+import type {
   Recipe,
   Ingredient,
   NewIngredient,
@@ -11,7 +13,7 @@ import {
   InventoryItem,
   ShoppingItem,
   ShoppingCategory
-} from "@shared/schema";
+} from "../shared/schema.ts";
 import { eq, and, desc, like, sql } from "drizzle-orm";
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -693,39 +695,51 @@ export const storage = {
         
         // Extract ingredients with our enhanced parsing helper function
         const ingredients: {name: string, quantity: string, unit: string}[] = [];
-        
-        // Target ingredient sections more specifically for Tasty.co
-        // Tasty.co uses specific structured ingredient lists, which we target precisely
         let foundIngredients = false;
-        
-        // First try with specific Tasty.co selectors - they often have a component attribute
+        // First try with specific Tasty.co selectors
         $('[data-ingredient-list-component="true"] li, [data-ingredient-component="true"], [component="ingredient"], .ingredient-item, .ingredients-item').each((i, el) => {
           const text = $(el).text().trim();
+          const lowerText = text.toLowerCase();
+          // Filter out lines that look like instructions or section headers
+          if (
+            !text ||
+            text.length < 3 ||
+            text.split(' ').length > 12 || // Too long, likely not an ingredient
+            /^[A-Z\s]+$/.test(text) || // All uppercase
+            /^(in a |add |mix |combine |bake |preheat |heat |stir |whisk |pour |place |cook |let |serve |garnish |top |drizzle |layer |repeat |divide |fold |transfer |season |set aside|meanwhile|using )/i.test(lowerText) ||
+            /\b(bowl|pan|oven|sheet|dish|skillet|saucepan|instructions|directions|method|step|section|for the|for serving|for garnish|to serve)\b/i.test(lowerText)
+          ) {
+            return;
+          }
           foundIngredients = true;
-          
-          // Use our helper function to parse the ingredient text
           const parsedIngredient = parseIngredientText(text);
-          
-          // Only add valid ingredients (parseIngredientText returns empty name for non-ingredient texts)
           if (parsedIngredient.name) {
             ingredients.push(parsedIngredient);
           }
         });
-        
         // If we didn't find any ingredients with the specific selectors, try more generic ones
         if (!foundIngredients) {
           $('.ingredients-list li, .recipe-ingredients li, .ingredients li, ul.ingredients li, [class*="ingredient"] li, [id*="ingredient"] li').each((i, el) => {
             const text = $(el).text().trim();
-            
-            // Use our helper function to parse the ingredient text
+            const lowerText = text.toLowerCase();
+            if (
+              !text ||
+              text.length < 3 ||
+              text.split(' ').length > 12 ||
+              /^[A-Z\s]+$/.test(text) ||
+              /^(in a |add |mix |combine |bake |preheat |heat |stir |whisk |pour |place |cook |let |serve |garnish |top |drizzle |layer |repeat |divide |fold |transfer |season |set aside|meanwhile|using )/i.test(lowerText) ||
+              /\b(bowl|pan|oven|sheet|dish|skillet|saucepan|instructions|directions|method|step|section|for the|for serving|for garnish|to serve)\b/i.test(lowerText)
+            ) {
+              return;
+            }
             const parsedIngredient = parseIngredientText(text);
-            
-            // Only add valid ingredients (parseIngredientText returns empty name for non-ingredient texts)
             if (parsedIngredient.name) {
               ingredients.push(parsedIngredient);
             }
           });
         }
+        // Debug log: print all extracted ingredients for Tasty.co
+        console.log('Extracted Tasty.co ingredients:', ingredients);
         
         // If we still didn't find ingredients or we're missing key ingredients, 
         // try to get them from the raw JSON data that might be embedded

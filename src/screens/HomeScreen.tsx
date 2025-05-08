@@ -1,8 +1,10 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView, SafeAreaView, Platform } from 'react-native';
-import { Card, Title, Text, Surface, useTheme } from 'react-native-paper';
+import { Card, Title, Text, Surface, useTheme, IconButton } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 type HomeScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Home'>;
@@ -44,28 +46,27 @@ const features: Feature[] = [
 
 const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
 
   const renderFeatureCard = (feature: Feature) => (
     <Card
       key={feature.title}
-      style={styles.card}
+      style={[styles.card, { borderLeftColor: theme.colors.primary, borderLeftWidth: 6 }]}
       mode="elevated"
-      onPress={() => {
-        if (feature.screen === 'Recipes') {
-          navigation.navigate('Recipes');
-        } else if (feature.screen === 'Inventory') {
-          navigation.navigate('Inventory');
-        } else if (feature.screen === 'ShoppingLists') {
-          navigation.navigate('ShoppingLists');
-        } else if (feature.screen === 'CookMaps') {
-          navigation.navigate('CookMaps');
-        }
-      }}
+      onPress={() => navigation.navigate(feature.screen as any)}
     >
       <Card.Content style={styles.cardContent}>
-        <View style={styles.cardHeader}>
-          <Title style={styles.cardTitle}>{feature.title}</Title>
-          <Text style={styles.cardDescription}>{feature.description}</Text>
+        <View style={styles.cardRow}>
+          <IconButton
+            icon={props => (
+              <MaterialCommunityIcons name={feature.icon as any} {...props} color={theme.colors.primary} size={36} />
+            )}
+            style={styles.cardIcon}
+          />
+          <View style={styles.cardHeader}>
+            <Title style={styles.cardTitle}>{feature.title}</Title>
+            <Text style={styles.cardDescription}>{feature.description}</Text>
+          </View>
         </View>
       </Card.Content>
     </Card>
@@ -75,11 +76,12 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView 
         style={styles.container}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
         showsVerticalScrollIndicator={false}
       >
         <Surface style={styles.header} elevation={4}>
           <Title style={styles.headerTitle}>Grocery Manager</Title>
+          <Text style={styles.welcomeText}>Welcome! What would you like to manage today?</Text>
         </Surface>
         <View style={styles.content}>
           {features.map(renderFeatureCard)}
@@ -114,6 +116,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+    alignItems: 'center',
   },
   headerTitle: {
     color: 'white',
@@ -121,6 +124,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
     letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  welcomeText: {
+    color: 'white',
+    fontSize: 18,
+    textAlign: 'center',
+    marginBottom: 8,
   },
   content: {
     padding: 16,
@@ -141,6 +151,15 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     padding: 16,
+  },
+  cardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cardIcon: {
+    marginRight: 16,
+    backgroundColor: '#e3f2fd',
+    borderRadius: 24,
   },
   cardHeader: {
     flexDirection: 'column',
